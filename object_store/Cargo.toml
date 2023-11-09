@@ -59,12 +59,13 @@ tokio = { version = "1.25.0", features = ["sync", "macros", "rt", "time", "io-ut
 nix = { version = "0.27.1", features = ["fs"] }
 
 [features]
-cloud = ["serde", "serde_json", "quick-xml", "hyper", "reqwest", "reqwest/json", "reqwest/stream", "chrono/serde", "base64", "rand", "ring"]
+cloud = ["serde", "serde_json", "quick-xml", "hyper", "reqwest", "reqwest/json", "reqwest/stream", "chrono/serde", "base64", "rand"]
 azure = ["cloud"]
 gcp = ["cloud", "rustls-pemfile"]
 aws = ["cloud"]
 http = ["cloud"]
 tls-webpki-roots = ["reqwest?/rustls-tls-webpki-roots"]
+checksum = ["ring"]
 
 [dev-dependencies] # In alphabetical order
 tempfile = "3.1.0"
