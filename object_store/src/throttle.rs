@@ -19,6 +19,7 @@
 use parking_lot::Mutex;
 use std::ops::Range;
 use std::{convert::TryInto, sync::Arc};
+use std::collections::HashMap;
 
 use crate::{
     path::Path, GetResult, GetResultPayload, ListResult, ObjectMeta, ObjectStore, PutOptions,
@@ -284,6 +285,34 @@ impl<T: ObjectStore> ObjectStore for ThrottledStore<T> {
         sleep(self.config().wait_put_per_call).await;
 
         self.inner.rename_if_not_exists(from, to).await
+    }
+
+    async fn update_object_metadata(
+        &self,
+        location: &Path,
+        metadata: HashMap<String, Option<String>>,
+    ) -> Result<()> {
+        sleep(self.config().wait_put_per_call).await;
+
+        self.inner.update_object_metadata(location, metadata).await
+    }
+
+    async fn get_object_metadata(&self, location: &Path) -> Result<HashMap<String, String>> {
+        sleep(self.config().wait_get_per_call).await;
+
+        self.inner.get_object_metadata(location).await
+    }
+
+    async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
+        sleep(self.config().wait_put_per_call).await;
+
+        self.inner.set_object_tags(location, tags).await
+    }
+
+    async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>> {
+        sleep(self.config().wait_get_per_call).await;
+
+        self.inner.get_object_tags(location).await
     }
 }
 

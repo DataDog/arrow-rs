@@ -24,6 +24,7 @@ use crate::client::s3::{
     ListResponse,
 };
 use crate::client::GetOptionsExt;
+use crate::gcp::client::Error::InvalidMetadata;
 use crate::gcp::{GcpCredential, GcpCredentialProvider, STORE};
 use crate::multipart::PartId;
 use crate::path::{Path, DELIMITER};
@@ -38,6 +39,7 @@ use reqwest::header::HeaderName;
 use reqwest::{header, Client, Method, RequestBuilder, Response, StatusCode};
 use serde::Serialize;
 use snafu::{OptionExt, ResultExt, Snafu};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 const VERSION_HEADER: &str = "x-goog-generation";
@@ -54,6 +56,9 @@ enum Error {
 
     #[snafu(display("Got invalid list response: {}", source))]
     InvalidListResponse { source: quick_xml::de::DeError },
+
+    #[snafu(display("Error serializing metadata: {}", source))]
+    InvalidMetadata { source: serde_json::Error },
 
     #[snafu(display("Error performing get request {}: {}", path, source))]
     GetRequest {
@@ -201,6 +206,14 @@ impl GoogleCloudStorageClient {
         let encoded = utf8_percent_encode(path.as_ref(), NON_ALPHANUMERIC);
         format!(
             "{}/{}/{}",
+            self.config.base_url, self.bucket_name_encoded, encoded
+        )
+    }
+
+    pub fn object_url_json(&self, path: &Path) -> String {
+        let encoded = utf8_percent_encode(path.as_ref(), NON_ALPHANUMERIC);
+        format!(
+            "{}/storage/v1/b/{}/o/{}",
             self.config.base_url, self.bucket_name_encoded, encoded
         )
     }
@@ -415,6 +428,28 @@ impl GoogleCloudStorageClient {
                     path: to.to_string(),
                 },
                 _ => err.error(STORE, from.to_string()),
+            })?;
+
+        Ok(())
+    }
+
+    pub async fn update_object_metadata(
+        &self,
+        path: &Path,
+        metadata: HashMap<String, Option<String>>,
+    ) -> Result<()> {
+        let credential = self.get_credential().await?;
+        let url = self.object_url_json(path);
+
+        self.client
+            .request(Method::PATCH, url)
+            .bearer_auth(&credential.bearer)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(serde_json::to_string(&metadata).map_err(|e| InvalidMetadata { source: e })?)
+            .send_retry(&self.config.retry_config)
+            .await
+            .context(PostRequestSnafu {
+                path: path.as_ref(),
             })?;
 
         Ok(())

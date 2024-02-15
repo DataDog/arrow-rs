@@ -37,12 +37,13 @@ use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
 use reqwest::header::{HeaderName, IF_MATCH, IF_NONE_MATCH};
 use reqwest::{Method, StatusCode};
+use std::collections::HashMap;
 use std::{sync::Arc, time::Duration};
 use tokio::io::AsyncWrite;
 use url::Url;
 
 use crate::aws::client::{RequestError, S3Client};
-use crate::client::get::GetClientExt;
+use crate::client::get::{GetClient, GetClientExt};
 use crate::client::list::ListClientExt;
 use crate::client::CredentialProvider;
 use crate::multipart::{MultiPartStore, PartId, PutPart, WriteMultiPart};
@@ -316,6 +317,50 @@ impl ObjectStore for AmazonS3 {
             Err(e) => Err(e.into()),
             Ok(_) => Ok(()),
         }
+    }
+
+    async fn update_object_metadata(
+        &self,
+        location: &Path,
+        metadata: HashMap<String, Option<String>>,
+    ) -> Result<()> {
+        let mut req = self
+            .client
+            .copy_request(location, location)
+            .header("x-amz-metadata-directive", "REPLACE");
+        for (k, v) in metadata {
+            if let Some(v) = v {
+                req = req.header(&format!("x-amz-{}", k), &v);
+            }
+        }
+        req.send().await?;
+        Ok(())
+    }
+
+    async fn get_object_metadata(&self, location: &Path) -> Result<HashMap<String, String>> {
+        let opts = GetOptions{
+            head: true,
+            ..Default::default()
+        };
+        let response = self.client.get_request(location, opts).await?;
+        let meta = response.headers().iter().filter_map(|(k, v)| {
+            if let Some(k) = k.as_str().strip_prefix("x-amz-") {
+                Some((k.to_string(), v.to_str().ok()?.to_string()))
+            } else {
+                None
+            }
+        }).collect();
+
+        Ok(meta)
+    }
+
+    async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
+        self.client.set_object_tags(location, tags).await
+    }
+
+    async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>> {
+        let response = self.client.get_object_tagging(location).await?;
+        Ok(response.into())
     }
 }
 

@@ -37,13 +37,14 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use reqwest::Method;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::AsyncWrite;
 use url::Url;
 
-use crate::client::get::GetClientExt;
+use crate::client::get::{GetClient, GetClientExt};
 use crate::client::list::ListClientExt;
 use crate::client::CredentialProvider;
 pub use credential::{authority_hosts, AzureAccessKey, AzureAuthorizer};
@@ -56,6 +57,7 @@ mod credential;
 pub type AzureCredentialProvider = Arc<dyn CredentialProvider<Credential = AzureCredential>>;
 pub use builder::{AzureConfigKey, MicrosoftAzureBuilder};
 pub use credential::AzureCredential;
+use crate::client::s3::Tagging;
 
 const STORE: &str = "MicrosoftAzure";
 
@@ -133,6 +135,41 @@ impl ObjectStore for MicrosoftAzure {
 
     async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
         self.client.copy_request(from, to, false).await
+    }
+
+    async fn update_object_metadata(
+        &self,
+        location: &Path,
+        metadata: HashMap<String, Option<String>>,
+    ) -> Result<()> {
+        self.client.put_blob_metadata(location, metadata).await
+    }
+
+    async fn get_object_metadata(&self, location: &Path) -> Result<HashMap<String, String>> {
+        let opts = GetOptions{
+            head: true,
+            ..Default::default()
+        };
+        let response = self.client.get_request(location, opts).await?;
+        let meta = response.headers().iter().filter_map(|(k, v)| {
+            if let Some(k) = k.as_str().strip_prefix("x-ms-") {
+                Some((k.to_string(), v.to_str().ok()?.to_string()))
+            } else {
+                None
+            }
+        }).collect();
+
+        Ok(meta)
+    }
+
+    async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
+        let request = Tagging::from(tags);
+        self.client.put_blob_tagging(location, request).await
+    }
+
+    async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>> {
+        let response = self.client.get_blob_tagging(location).await?;
+        Ok(response.into())
     }
 }
 

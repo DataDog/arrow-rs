@@ -20,6 +20,7 @@ use crate::multipart::PartId;
 use crate::path::Path;
 use crate::{ListResult, ObjectMeta, Result};
 use chrono::{DateTime, Utc};
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
@@ -125,4 +126,45 @@ pub struct MultipartPart {
 pub struct CompleteMultipartUploadResult {
     #[serde(rename = "ETag")]
     pub e_tag: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Tagging {
+    #[serde(rename = "TagSet")]
+    pub list: TagList,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TagList {
+    #[serde(rename = "Tag")]
+    pub tags: Vec<Tag>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Tag {
+    pub key: String,
+    pub value: String,
+}
+
+impl From<HashMap<String, String>> for Tagging {
+    fn from(value: HashMap<String, String>) -> Self {
+        let tags = value
+            .into_iter()
+            .map(|(key, value)| Tag { key, value })
+            .collect();
+        Self {
+            list: TagList { tags },
+        }
+    }
+}
+
+impl Into<HashMap<String, String>> for Tagging {
+    fn into(self) -> HashMap<String, String> {
+        self.list
+            .tags
+            .into_iter()
+            .map(|tag| (tag.key, tag.value))
+            .collect()
+    }
 }

@@ -28,7 +28,7 @@ use chrono::{DateTime, Utc};
 use futures::{stream::BoxStream, StreamExt};
 use parking_lot::RwLock;
 use snafu::{OptionExt, ResultExt, Snafu};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::collections::BTreeSet;
 use std::io;
 use std::ops::Range;
@@ -85,6 +85,8 @@ struct Entry {
     data: Bytes,
     last_modified: DateTime<Utc>,
     e_tag: usize,
+    metadata: HashMap<String, String>,
+    tags: HashMap<String, String>,
 }
 
 impl Entry {
@@ -93,6 +95,8 @@ impl Entry {
             data,
             last_modified,
             e_tag,
+            metadata: HashMap::new(),
+            tags: HashMap::new(),
         }
     }
 }
@@ -356,6 +360,54 @@ impl ObjectStore for InMemory {
         }
         storage.insert(to, entry.data);
         Ok(())
+    }
+
+    async fn update_object_metadata(
+        &self,
+        location: &Path,
+        metadata: HashMap<String, Option<String>>,
+    ) -> Result<()> {
+        let mut storage = self.storage.write();
+        let entry = storage
+            .map
+            .get_mut(location)
+            .context(NoDataInMemorySnafu {
+                path: location.to_string(),
+            })?;
+
+        for (k, v) in metadata {
+            if let Some(v) = v {
+                entry.metadata.insert(k, v);
+            } else {
+                entry.metadata.remove(&k);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn get_object_metadata(&self, location: &Path) -> Result<HashMap<String, String>> {
+        let entry = self.entry(location).await?;
+        Ok(entry.metadata)
+    }
+
+    async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
+        let mut storage = self.storage.write();
+        let entry = storage
+            .map
+            .get_mut(location)
+            .context(NoDataInMemorySnafu {
+                path: location.to_string(),
+            })?;
+
+        entry.tags = tags;
+
+        Ok(())
+    }
+
+    async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>> {
+        let entry = self.entry(location).await?;
+        Ok(entry.tags)
     }
 }
 

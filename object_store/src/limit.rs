@@ -17,6 +17,7 @@
 
 //! An object store that limits the maximum concurrency of the wrapped implementation
 
+use std::collections::HashMap;
 use crate::{
     BoxStream, GetOptions, GetResult, GetResultPayload, ListResult, MultipartId, ObjectMeta,
     ObjectStore, Path, PutOptions, PutResult, Result, StreamExt,
@@ -183,6 +184,30 @@ impl<T: ObjectStore> ObjectStore for LimitStore<T> {
     async fn rename_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
         let _permit = self.semaphore.acquire().await.unwrap();
         self.inner.rename_if_not_exists(from, to).await
+    }
+
+    async fn update_object_metadata(
+        &self,
+        location: &Path,
+        metadata: HashMap<String, Option<String>>,
+    ) -> Result<()> {
+        let _permit = self.semaphore.acquire().await.unwrap();
+        self.inner.update_object_metadata(location, metadata).await
+    }
+
+    async fn get_object_metadata(&self, location: &Path) -> Result<HashMap<String, String>> {
+        let _permit = self.semaphore.acquire().await.unwrap();
+        self.inner.get_object_metadata(location).await
+    }
+
+    async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
+        let _permit = self.semaphore.acquire().await.unwrap();
+        self.inner.set_object_tags(location, tags).await
+    }
+
+    async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>> {
+        let _permit = self.semaphore.acquire().await.unwrap();
+        self.inner.get_object_tags(location).await
     }
 }
 

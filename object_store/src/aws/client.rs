@@ -28,7 +28,7 @@ use crate::client::list::ListClient;
 use crate::client::retry::RetryExt;
 use crate::client::s3::{
     CompleteMultipartUpload, CompleteMultipartUploadResult, InitiateMultipartUploadResult,
-    ListResponse,
+    ListResponse, Tagging
 };
 use crate::client::GetOptionsExt;
 use crate::multipart::PartId;
@@ -51,6 +51,7 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 const VERSION_HEADER: &str = "x-amz-version-id";
@@ -111,6 +112,12 @@ pub(crate) enum Error {
 
     #[snafu(display("Got invalid multipart response: {}", source))]
     InvalidMultipartResponse { source: quick_xml::de::DeError },
+
+    #[snafu(display("Error fetching metadata response body: {}", source))]
+    GetMetadataBody { source: reqwest::Error },
+
+    #[snafu(display("Got invalid tags response: {}", source))]
+    InvalidTagsResponse { source: quick_xml::de::DeError },
 
     #[snafu(display("Unable to extract metadata from headers: {}", source))]
     Metadata {
@@ -570,8 +577,7 @@ impl S3Client {
         })
     }
 
-    #[cfg(test)]
-    pub async fn get_object_tagging(&self, path: &Path) -> Result<Response> {
+    pub async fn get_object_tagging(&self, path: &Path) -> Result<Tagging> {
         let credential = self.config.get_session_credential().await?;
         let url = format!("{}?tagging", self.config.path_url(path));
         let response = self
@@ -580,8 +586,33 @@ impl S3Client {
             .with_aws_sigv4(credential.authorizer(), None)
             .send_retry(&self.config.retry_config)
             .await
-            .map_err(|e| e.error(STORE, path.to_string()))?;
+            .map_err(|e| e.error(STORE, path.to_string()))?
+            .bytes()
+            .await
+            .context(GetMetadataBodySnafu)?;
+
+        let response: Tagging = quick_xml::de::from_reader(response.reader()).context(InvalidTagsResponseSnafu)?;
+
         Ok(response)
+    }
+
+    pub async fn set_object_tags(&self, path: &Path, tags: HashMap<String, String>) -> Result<()> {
+        let credential = self.config.get_session_credential().await?;
+        let url = format!("{}?tagging", self.config.path_url(path));
+        let request = Tagging::from(tags);
+        let body = quick_xml::se::to_string(&request).unwrap();
+
+        self
+            .client
+            .request(Method::PUT, url)
+            .header(CONTENT_TYPE, "application/xml")
+            .body(body)
+            .with_aws_sigv4(credential.authorizer(), None)
+            .send_retry(&self.config.retry_config)
+            .await
+            .map_err(|e| e.error(STORE, path.to_string()))?;
+
+        Ok(())
     }
 }
 

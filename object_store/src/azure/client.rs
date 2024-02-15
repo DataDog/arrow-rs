@@ -23,6 +23,7 @@ use crate::client::header::{get_put_result, HeaderConfig};
 use crate::client::list::ListClient;
 use crate::client::retry::RetryExt;
 use crate::client::GetOptionsExt;
+use crate::client::s3::Tagging;
 use crate::multipart::PartId;
 use crate::path::DELIMITER;
 use crate::util::{deserialize_rfc1123, GetRange};
@@ -111,6 +112,9 @@ pub(crate) enum Error {
 
     #[snafu(display("Got invalid user delegation key response: {}", source))]
     DelegationKeyResponse { source: quick_xml::de::DeError },
+
+    #[snafu(display("Got invalid tags response: {}", source))]
+    InvalidTagsResponse { source: quick_xml::de::DeError },
 
     #[snafu(display("Generating SAS keys with SAS tokens auth is not supported"))]
     SASforSASNotSupported,
@@ -409,8 +413,37 @@ impl AzureClient {
         }
     }
 
-    #[cfg(test)]
-    pub async fn get_blob_tagging(&self, path: &Path) -> Result<Response> {
+    pub async fn put_blob_metadata(
+        &self,
+        path: &Path,
+        metadata: HashMap<String, Option<String>>,
+    ) -> Result<()> {
+        let credential = self.get_credential().await?;
+        let url = self.config.path_url(path);
+
+        let mut builder = self
+            .client
+            .request(Method::PUT, url)
+            .query(&[("comp", "metadata")]);
+
+        for (k, v) in metadata {
+            if let Some(v) = v {
+                builder = builder.header(format!("x-ms-{}", k), v);
+            }
+        }
+
+        builder
+            .with_azure_authorization(&credential, &self.config.account)
+            .send_retry(&self.config.retry_config)
+            .await
+            .context(PutRequestSnafu {
+                path: path.as_ref(),
+            })?;
+
+        Ok(())
+    }
+
+    pub async fn get_blob_tagging(&self, path: &Path) -> Result<Tagging> {
         let credential = self.get_credential().await?;
         let url = self.config.path_url(path);
         let response = self
@@ -422,8 +455,32 @@ impl AzureClient {
             .await
             .context(GetRequestSnafu {
                 path: path.as_ref(),
-            })?;
+            })?
+            .bytes()
+            .await
+            .context(GetResponseBodySnafu { path: path.as_ref() })?;
+
+        let response: Tagging = quick_xml::de::from_reader(response.reader()).context(InvalidTagsResponseSnafu)?;
         Ok(response)
+    }
+
+    pub async fn put_blob_tagging(&self, path: &Path, tagging: Tagging) -> Result<()> {
+        let credential = self.get_credential().await?;
+        let url = self.config.path_url(path);
+        let body = quick_xml::se::to_string(&tagging).unwrap();
+        self
+            .client
+            .request(Method::PUT, url)
+            .query(&[("comp", "tags")])
+            .body(body)
+            .with_azure_authorization(&credential, &self.config.account)
+            .send_retry(&self.config.retry_config)
+            .await
+            .context(PutRequestSnafu {
+                path: path.as_ref(),
+            })?;
+
+        Ok(())
     }
 }
 

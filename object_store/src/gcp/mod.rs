@@ -36,22 +36,18 @@
 //! because it allows much higher throughput in our benchmarks (see
 //! [#5194](https://github.com/apache/arrow-rs/issues/5194)). HTTP/2 can be
 //! enabled by setting [crate::ClientConfigKey::Http1Only] to false.
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::client::CredentialProvider;
-use crate::{
-    multipart::{PartId, PutPart, WriteMultiPart},
-    path::Path,
-    GetOptions, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, PutOptions, PutResult,
-    Result,
-};
+use crate::{multipart::{PartId, PutPart, WriteMultiPart}, path::Path, GetOptions, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, PutOptions, PutResult, Result, Error};
 use async_trait::async_trait;
 use bytes::Bytes;
 use client::GoogleCloudStorageClient;
 use futures::stream::BoxStream;
 use tokio::io::AsyncWrite;
 
-use crate::client::get::GetClientExt;
+use crate::client::get::{GetClient, GetClientExt};
 use crate::client::list::ListClientExt;
 use crate::multipart::MultiPartStore;
 pub use builder::{GoogleCloudStorageBuilder, GoogleConfigKey};
@@ -172,6 +168,39 @@ impl ObjectStore for GoogleCloudStorage {
 
     async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
         self.client.copy_request(from, to, true).await
+    }
+
+    async fn update_object_metadata(
+        &self,
+        location: &Path,
+        metadata: HashMap<String, Option<String>>,
+    ) -> Result<()> {
+        self.client.update_object_metadata(location, metadata).await
+    }
+
+    async fn get_object_metadata(&self, location: &Path) -> Result<HashMap<String, String>> {
+        let opts = GetOptions{
+            head: true,
+            ..Default::default()
+        };
+        let response = self.client.get_request(location, opts).await?;
+        let meta = response.headers().iter().filter_map(|(k, v)| {
+            if let Some(k) = k.as_str().strip_prefix("x-goog-") {
+                Some((k.to_string(), v.to_str().ok()?.to_string()))
+            } else {
+                None
+            }
+        }).collect();
+
+        Ok(meta)
+    }
+
+    async fn set_object_tags(&self, _: &Path, _: HashMap<String, String>) -> Result<()> {
+        Err(Error::NotSupported {source: "GCS does not support object tags".to_string().into()})
+    }
+
+    async fn get_object_tags(&self, _: &Path) -> Result<HashMap<String, String>> {
+        Err(Error::NotSupported {source: "GCS does not support object tags".to_string().into()})
     }
 }
 

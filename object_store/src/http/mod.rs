@@ -37,6 +37,7 @@ use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
 use itertools::Itertools;
 use snafu::{OptionExt, ResultExt, Snafu};
+use std::collections::HashMap;
 use tokio::io::AsyncWrite;
 use url::Url;
 
@@ -195,6 +196,26 @@ impl ObjectStore for HttpStore {
 
     async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
         self.client.copy(from, to, false).await
+    }
+
+    async fn update_object_metadata(
+        &self,
+        location: &Path,
+        metadata: HashMap<String, Option<String>>,
+    ) -> Result<()> {
+        Err(crate::Error::NotImplemented)
+    }
+
+    async fn get_object_metadata(&self, location: &Path) -> Result<HashMap<String, String>> {
+        Err(crate::Error::NotImplemented)
+    }
+
+    async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
+        Err(crate::Error::NotImplemented)
+    }
+
+    async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>> {
+        Err(crate::Error::NotImplemented)
     }
 }
 

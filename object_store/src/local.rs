@@ -40,6 +40,7 @@ use std::task::Poll;
 use std::time::SystemTime;
 use std::{collections::BTreeSet, convert::TryFrom, io};
 use std::{collections::VecDeque, path::PathBuf};
+use std::collections::HashMap;
 use tokio::io::AsyncWrite;
 use url::Url;
 use walkdir::{DirEntry, WalkDir};
@@ -663,6 +664,26 @@ impl ObjectStore for LocalFileSystem {
             }
         })
         .await
+    }
+
+    async fn update_object_metadata(
+        &self,
+        _: &Path,
+        _: HashMap<String, Option<String>>,
+    ) -> Result<()> {
+        Err(crate::Error::NotImplemented)
+    }
+
+    async fn get_object_metadata(&self, _: &Path) -> Result<HashMap<String, String>> {
+        Err(crate::Error::NotImplemented)
+    }
+
+    async fn set_object_tags(&self, _: &Path, _: HashMap<String, String>) -> Result<()> {
+        Err(crate::Error::NotImplemented)
+    }
+
+    async fn get_object_tags(&self, _: &Path) -> Result<HashMap<String, String>> {
+        Err(crate::Error::NotImplemented)
     }
 }
 
