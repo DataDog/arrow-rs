@@ -136,7 +136,7 @@ pub struct Tagging {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TagList {
-    #[serde(rename = "Tag")]
+    #[serde(rename = "Tag", default)]
     pub tags: Vec<Tag>,
 }
 
