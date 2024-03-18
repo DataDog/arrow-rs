@@ -100,6 +100,11 @@ pub(crate) enum Error {
     Metadata {
         source: crate::client::header::Error,
     },
+    
+    #[snafu(display("Error encoding metadata key as HTTP header: {}", source))]
+    InvalidMetadataName {
+        source: reqwest::header::InvalidHeaderName,
+    },
 
     #[snafu(display("ETag required for conditional update"))]
     MissingETag,
@@ -238,9 +243,9 @@ impl AzureClient {
 
     /// Make an Azure PUT request <https://docs.microsoft.com/en-us/rest/api/storageservices/put-blob>
     pub async fn put_blob(&self, path: &Path, bytes: Bytes, opts: PutOptions) -> Result<PutResult> {
-        let builder = self.put_request(path, bytes);
+        let mut builder = self.put_request(path, bytes);
 
-        let builder = match &opts.mode {
+        builder = match &opts.mode {
             PutMode::Overwrite => builder,
             PutMode::Create => builder.header(&IF_NONE_MATCH, "*"),
             PutMode::Update(v) => {
@@ -249,7 +254,14 @@ impl AzureClient {
             }
         };
 
-        let builder = match (opts.tags.encoded(), self.config.disable_tagging) {
+        if let Some(meta) = opts.metadata {
+            for (k, v) in meta {
+                let hdr_name = HeaderName::from_bytes(format!("x-ms-{}", k).as_bytes()).context(InvalidMetadataNameSnafu)?;
+                builder = builder.header(&hdr_name, &v);
+            }
+        }
+
+        builder = match (opts.tags.encoded(), self.config.disable_tagging) {
             ("", _) | (_, true) => builder,
             (tags, false) => builder.header(&TAGS_HEADER, tags),
         };

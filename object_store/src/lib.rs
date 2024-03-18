@@ -1141,6 +1141,10 @@ pub struct PutOptions {
     ///
     /// Implementations that don't support object tagging should ignore this
     pub tags: TagSet,
+    /// Provide additional metadata for this object
+    /// 
+    /// Custom metadata fields should be prefixed with `meta-`
+    pub metadata: Option<HashMap<String, String>>,
 }
 
 impl From<PutMode> for PutOptions {

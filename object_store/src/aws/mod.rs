@@ -170,6 +170,12 @@ impl ObjectStore for AmazonS3 {
         if !tags.is_empty() && !self.client.config.disable_tagging {
             request = request.header(&TAGS_HEADER, tags);
         }
+        
+        if let Some(meta) = opts.metadata {
+            for (k, v) in meta {
+                request = request.header(&format!("x-amz-{}", k), &v);
+            }
+        }
 
         match (opts.mode, &self.client.config.conditional_put) {
             (PutMode::Overwrite, _) => request.do_put().await,

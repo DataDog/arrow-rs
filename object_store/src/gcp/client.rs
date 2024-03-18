@@ -95,6 +95,11 @@ enum Error {
         source: crate::client::header::Error,
     },
 
+    #[snafu(display("Error encoding metadata key as HTTP header: {}", source))]
+    InvalidMetadataName {
+        source: reqwest::header::InvalidHeaderName,
+    },
+
     #[snafu(display("Version required for conditional update"))]
     MissingVersion,
 
@@ -245,9 +250,9 @@ impl GoogleCloudStorageClient {
     }
 
     pub async fn put(&self, path: &Path, data: Bytes, opts: PutOptions) -> Result<PutResult> {
-        let builder = self.put_request(path, data);
+        let mut builder = self.put_request(path, data);
 
-        let builder = match &opts.mode {
+        builder = match &opts.mode {
             PutMode::Overwrite => builder,
             PutMode::Create => builder.header(&VERSION_MATCH, "0"),
             PutMode::Update(v) => {
@@ -255,6 +260,13 @@ impl GoogleCloudStorageClient {
                 builder.header(&VERSION_MATCH, etag)
             }
         };
+
+        if let Some(meta) = opts.metadata {
+            for (k, v) in meta {
+                let hdr_name = HeaderName::from_bytes(format!("x-goog-{}", k).as_bytes()).context(InvalidMetadataNameSnafu)?;
+                builder = builder.header(&hdr_name, &v);
+            }
+        }
 
         match (opts.mode, builder.send().await) {
             (PutMode::Create, Err(crate::Error::Precondition { path, source })) => {
@@ -440,12 +452,26 @@ impl GoogleCloudStorageClient {
     ) -> Result<()> {
         let credential = self.get_credential().await?;
         let url = self.object_url_json(path);
+        
+        let mut body = serde_json::Map::new();
+        for (k, v) in metadata {
+            if let Some(v) = v {
+                if let Some(k) = k.strip_prefix("meta-") {
+                    let e = body.entry("metadata".to_string()).or_insert(serde_json::Value::Object(serde_json::Map::new()));
+                    e.as_object_mut().unwrap().insert(k.to_string(), serde_json::Value::String(v));
+                } else {
+                    body.insert(k, serde_json::Value::String(v));
+                }
+            } else {
+                body.insert(k, serde_json::Value::Null);
+            }
+        }
 
         self.client
             .request(Method::PATCH, url)
             .bearer_auth(&credential.bearer)
             .header(header::CONTENT_TYPE, "application/json")
-            .body(serde_json::to_string(&metadata).map_err(|e| InvalidMetadata { source: e })?)
+            .body(serde_json::to_string(&body).map_err(|e| InvalidMetadata { source: e })?)
             .send_retry(&self.config.retry_config)
             .await
             .context(PostRequestSnafu {
