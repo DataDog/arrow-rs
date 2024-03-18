@@ -36,7 +36,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::info;
 
-pub const DEFAULT_SCOPE: &str = "https://www.googleapis.com/auth/devstorage.full_control";
+pub const DEFAULT_SCOPE: &str = "https://www.googleapis.com/auth/devstorage.read_write";
 
 pub const DEFAULT_GCS_BASE_URL: &str = "https://storage.googleapis.com";
 
