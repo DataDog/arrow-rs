@@ -112,6 +112,7 @@ pub enum ClientConfigKey {
     Timeout,
     /// User-Agent header to be used by this client
     UserAgent,
+    VerboseLogging,
 }
 
 impl AsRef<str> for ClientConfigKey {
@@ -133,6 +134,7 @@ impl AsRef<str> for ClientConfigKey {
             Self::ProxyExcludes => "proxy_excludes",
             Self::Timeout => "timeout",
             Self::UserAgent => "user_agent",
+            Self::VerboseLogging => "verbose_logging",
         }
     }
 }
@@ -156,6 +158,7 @@ impl FromStr for ClientConfigKey {
             "proxy_url" => Ok(Self::ProxyUrl),
             "timeout" => Ok(Self::Timeout),
             "user_agent" => Ok(Self::UserAgent),
+            "verbose_logging" => Ok(Self::VerboseLogging),
             _ => Err(super::Error::UnknownConfigurationKey {
                 store: "HTTP",
                 key: s.into(),
@@ -185,6 +188,7 @@ pub struct ClientOptions {
     http2_keep_alive_while_idle: ConfigValue<bool>,
     http1_only: ConfigValue<bool>,
     http2_only: ConfigValue<bool>,
+    verbose_logging: ConfigValue<bool>,
 }
 
 impl Default for ClientOptions {
@@ -218,6 +222,7 @@ impl Default for ClientOptions {
             // https://github.com/apache/arrow-rs/issues/5194
             http1_only: true.into(),
             http2_only: Default::default(),
+            verbose_logging: false.into(),
         }
     }
 }
@@ -260,7 +265,8 @@ impl ClientOptions {
             ClientConfigKey::Timeout => self.timeout = Some(ConfigValue::Deferred(value.into())),
             ClientConfigKey::UserAgent => {
                 self.user_agent = Some(ConfigValue::Deferred(value.into()))
-            }
+            },
+            ClientConfigKey::VerboseLogging => self.verbose_logging.parse(value),
         }
         self
     }
@@ -296,6 +302,7 @@ impl ClientOptions {
                 .as_ref()
                 .and_then(|v| v.get().ok())
                 .and_then(|v| v.to_str().ok().map(|s| s.to_string())),
+            ClientConfigKey::VerboseLogging => Some(self.verbose_logging.to_string()).
         }
     }
 
@@ -494,6 +501,11 @@ impl ClientOptions {
         }
     }
 
+    pub fn with_verbose_logging(mut self) -> Self {
+        self.verbose_logging = true.into();
+        self
+    }
+
     /// Create a [`Client`] with overrides optimised for metadata endpoint access
     ///
     /// In particular:
@@ -576,6 +588,10 @@ impl ClientOptions {
 
         if self.allow_insecure.get()? {
             builder = builder.danger_accept_invalid_certs(true)
+        }
+
+        if self.verbose_logging.get()? {
+            builder = builder.connection_verbose(true)
         }
 
         builder
