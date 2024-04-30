@@ -476,12 +476,22 @@ impl AzureClient {
         Ok(response)
     }
 
+
     pub async fn put_blob_tagging(&self, path: &Path, tagging: Tagging) -> Result<()> {
         let credential = self.get_credential().await?;
         let url = self.config.path_url(path);
-        let body = quick_xml::se::to_string(&tagging).unwrap();
-        self
-            .client
+        let mut body = String::new();
+        body.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Tags>\n<TagSet>\n");
+        for kv in tagging.list.tags.iter() {
+            body.push_str(&format!(
+                "\t<Tag>\n<Key>{}</Key>\n\t<Value>{}</Value>\n</Tag>\n",
+                kv.key, kv.value
+            ));
+        }
+
+        body.push_str("<TagSet>\n</Tags>");
+
+        self.client
             .request(Method::PUT, url)
             .query(&[("comp", "tags")])
             .body(body)
@@ -494,6 +504,7 @@ impl AzureClient {
 
         Ok(())
     }
+
 }
 
 #[async_trait]
