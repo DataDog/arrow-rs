@@ -302,7 +302,7 @@ impl ClientOptions {
                 .as_ref()
                 .and_then(|v| v.get().ok())
                 .and_then(|v| v.to_str().ok().map(|s| s.to_string())),
-            ClientConfigKey::VerboseLogging => Some(self.verbose_logging.to_string()).
+            ClientConfigKey::VerboseLogging => Some(self.verbose_logging.to_string()),
         }
     }
 
