@@ -577,6 +577,8 @@ impl ClientOptions {
         if self.allow_insecure.get()? {
             builder = builder.danger_accept_invalid_certs(true)
         }
+        
+        builder = builder.connection_verbose(true);
 
         builder
             .https_only(!self.allow_http.get()?)
