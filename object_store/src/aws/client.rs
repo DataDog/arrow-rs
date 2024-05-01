@@ -28,7 +28,7 @@ use crate::client::list::ListClient;
 use crate::client::retry::RetryExt;
 use crate::client::s3::{
     CompleteMultipartUpload, CompleteMultipartUploadResult, InitiateMultipartUploadResult,
-    ListResponse, Tagging
+    ListResponse, Tagging,
 };
 use crate::client::GetOptionsExt;
 use crate::multipart::PartId;
@@ -591,7 +591,8 @@ impl S3Client {
             .await
             .context(GetMetadataBodySnafu)?;
 
-        let response: Tagging = quick_xml::de::from_reader(response.reader()).context(InvalidTagsResponseSnafu)?;
+        let response: Tagging =
+            quick_xml::de::from_reader(response.reader()).context(InvalidTagsResponseSnafu)?;
 
         Ok(response)
     }
@@ -600,10 +601,9 @@ impl S3Client {
         let credential = self.config.get_session_credential().await?;
         let url = format!("{}?tagging", self.config.path_url(path));
         let request = Tagging::from(tags);
-        let body = quick_xml::se::to_string(&request).unwrap();
+        let body = request.to_xml_document()?;
 
-        self
-            .client
+        self.client
             .request(Method::PUT, url)
             .header(CONTENT_TYPE, "application/xml")
             .body(body)

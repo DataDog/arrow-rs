@@ -18,10 +18,10 @@
 
 use crate::multipart::PartId;
 use crate::path::Path;
-use crate::{ListResult, ObjectMeta, Result};
+use crate::{Error, ListResult, ObjectMeta, Result};
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -166,5 +166,73 @@ impl Into<HashMap<String, String>> for Tagging {
             .into_iter()
             .map(|tag| (tag.key, tag.value))
             .collect()
+    }
+}
+
+impl Tagging {
+    pub fn to_xml_document(&self) -> Result<String> {
+        let body = quick_xml::se::to_string(self).map_err(|e| Error::Generic {
+            store: "",
+            source: Box::new(e),
+        })?;
+        Ok(format!(r#"<?xml version="1.0" encoding="utf-8"?>{}"#, body))
+    }
+
+    pub fn to_xml_document_for_azure(&self) -> Result<String> {
+        let body =
+            quick_xml::se::to_string_with_root("Tags", self).map_err(|e| Error::Generic {
+                store: "",
+                source: Box::new(e),
+            })?;
+        Ok(format!(r#"<?xml version="1.0" encoding="utf-8"?>{}"#, body))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tagging() {
+        let expected_xml = r#"<?xml version="1.0" encoding="utf-8"?><Tagging><TagSet><Tag><Key>key1</Key><Value>value1</Value></Tag><Tag><Key>key2</Key><Value>value2</Value></Tag></TagSet></Tagging>"#;
+
+        let tags = Tagging {
+            list: TagList {
+                tags: vec![
+                    Tag {
+                        key: "key1".to_string(),
+                        value: "value1".to_string(),
+                    },
+                    Tag {
+                        key: "key2".to_string(),
+                        value: "value2".to_string(),
+                    },
+                ],
+            },
+        };
+        let body = tags.to_xml_document().unwrap();
+        assert_eq!(body, expected_xml);
+    }
+
+    #[test]
+    fn test_tagging_azure() {
+        let expected_xml = r#"<?xml version="1.0" encoding="utf-8"?><Tags><TagSet><Tag><Key>key1</Key><Value>value1</Value></Tag><Tag><Key>key2</Key><Value>value2</Value></Tag></TagSet></Tags>"#;
+
+        let tags = Tagging {
+            list: TagList {
+                tags: vec![
+                    Tag {
+                        key: "key1".to_string(),
+                        value: "value1".to_string(),
+                    },
+                    Tag {
+                        key: "key2".to_string(),
+                        value: "value2".to_string(),
+                    },
+                ],
+            },
+        };
+        let body = tags.to_xml_document_for_azure().unwrap();
+        assert_eq!(body, expected_xml);
     }
 }

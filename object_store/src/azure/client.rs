@@ -22,8 +22,8 @@ use crate::client::get::GetClient;
 use crate::client::header::{get_put_result, HeaderConfig};
 use crate::client::list::ListClient;
 use crate::client::retry::RetryExt;
-use crate::client::GetOptionsExt;
 use crate::client::s3::Tagging;
+use crate::client::GetOptionsExt;
 use crate::multipart::PartId;
 use crate::path::DELIMITER;
 use crate::util::{deserialize_rfc1123, GetRange};
@@ -100,7 +100,7 @@ pub(crate) enum Error {
     Metadata {
         source: crate::client::header::Error,
     },
-    
+
     #[snafu(display("Error encoding metadata key as HTTP header: {}", source))]
     InvalidMetadataName {
         source: reqwest::header::InvalidHeaderName,
@@ -256,7 +256,8 @@ impl AzureClient {
 
         if let Some(meta) = opts.metadata {
             for (k, v) in meta {
-                let hdr_name = HeaderName::from_bytes(format!("x-ms-{}", k).as_bytes()).context(InvalidMetadataNameSnafu)?;
+                let hdr_name = HeaderName::from_bytes(format!("x-ms-{}", k).as_bytes())
+                    .context(InvalidMetadataNameSnafu)?;
                 builder = builder.header(&hdr_name, &v);
             }
         }
@@ -470,18 +471,20 @@ impl AzureClient {
             })?
             .bytes()
             .await
-            .context(GetResponseBodySnafu { path: path.as_ref() })?;
+            .context(GetResponseBodySnafu {
+                path: path.as_ref(),
+            })?;
 
-        let response: Tagging = quick_xml::de::from_reader(response.reader()).context(InvalidTagsResponseSnafu)?;
+        let response: Tagging =
+            quick_xml::de::from_reader(response.reader()).context(InvalidTagsResponseSnafu)?;
         Ok(response)
     }
 
     pub async fn put_blob_tagging(&self, path: &Path, tagging: Tagging) -> Result<()> {
         let credential = self.get_credential().await?;
         let url = self.config.path_url(path);
-        let body = quick_xml::se::to_string(&tagging).unwrap();
-        self
-            .client
+        let body = tagging.to_xml_document_for_azure()?;
+        self.client
             .request(Method::PUT, url)
             .query(&[("comp", "tags")])
             .body(body)
