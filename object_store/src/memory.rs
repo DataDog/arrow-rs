@@ -99,6 +99,16 @@ impl Entry {
             tags: HashMap::new(),
         }
     }
+    
+    #[cfg(not(test))]
+    fn new_from_put_opts(data: Bytes, e_tag: usize, _: &PutOptions) -> Self {
+        Self::new(data, Utc::now(), e_tag)
+    }
+    
+    #[cfg(test)]
+    fn new_from_put_opts(data: Bytes, e_tag: usize, opts: &PutOptions) -> Self {
+        Self::new(data, opts.faked_last_modified.unwrap_or(Utc::now()), e_tag)
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -171,7 +181,7 @@ impl ObjectStore for InMemory {
     async fn put_opts(&self, location: &Path, bytes: Bytes, opts: PutOptions) -> Result<PutResult> {
         let mut storage = self.storage.write();
         let etag = storage.next_etag;
-        let entry = Entry::new(bytes, Utc::now(), etag);
+        let entry = Entry::new_from_put_opts(bytes, etag, &opts);
 
         match opts.mode {
             PutMode::Overwrite => storage.overwrite(location, entry),
