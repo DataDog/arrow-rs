@@ -100,12 +100,12 @@ impl Entry {
         }
     }
     
-    #[cfg(not(test))]
+    #[cfg(not(feature = "test"))]
     fn new_from_put_opts(data: Bytes, e_tag: usize, _: &PutOptions) -> Self {
         Self::new(data, Utc::now(), e_tag)
     }
     
-    #[cfg(test)]
+    #[cfg(feature = "test")]
     fn new_from_put_opts(data: Bytes, e_tag: usize, opts: &PutOptions) -> Self {
         Self::new(data, opts.faked_last_modified.unwrap_or(Utc::now()), e_tag)
     }

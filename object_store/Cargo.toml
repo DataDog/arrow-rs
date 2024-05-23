@@ -65,6 +65,7 @@ gcp = ["cloud", "rustls-pemfile"]
 aws = ["cloud"]
 http = ["cloud"]
 tls-webpki-roots = ["reqwest?/rustls-tls-webpki-roots"]
+test = []
 
 [dev-dependencies] # In alphabetical order
 futures-test = "0.3"

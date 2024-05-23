@@ -1146,7 +1146,7 @@ pub struct PutOptions {
     /// Custom metadata fields should be prefixed with `meta-`
     pub metadata: Option<HashMap<String, String>>,
     
-    #[cfg(test)]
+    #[cfg(feature = "test")]
     pub faked_last_modified: Option<DateTime<Utc>>,
 }
 
