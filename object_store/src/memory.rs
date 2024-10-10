@@ -117,7 +117,12 @@ impl Entry {
 
     #[cfg(feature = "test")]
     fn new_from_put_opts(data: Bytes, e_tag: usize, opts: PutOptions) -> Self {
-        Self::new(data, opts.faked_last_modified.unwrap_or(Utc::now()), e_tag, opts.attributes)
+        Self::new(
+            data,
+            opts.faked_last_modified.unwrap_or(Utc::now()),
+            e_tag,
+            opts.attributes,
+        )
     }
 }
 
@@ -409,14 +414,15 @@ impl ObjectStore for InMemory {
         Ok(())
     }
 
-    async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()> {
+    async fn update_object_attributes(
+        &self,
+        location: &Path,
+        attributes: Attributes,
+    ) -> Result<()> {
         let mut storage = self.storage.write();
-        let entry = storage
-            .map
-            .get_mut(location)
-            .context(NoDataInMemorySnafu {
-                path: location.to_string(),
-            })?;
+        let entry = storage.map.get_mut(location).context(NoDataInMemorySnafu {
+            path: location.to_string(),
+        })?;
         entry.attributes = attributes;
         Ok(())
     }
@@ -428,12 +434,9 @@ impl ObjectStore for InMemory {
 
     async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
         let mut storage = self.storage.write();
-        let entry = storage
-            .map
-            .get_mut(location)
-            .context(NoDataInMemorySnafu {
-                path: location.to_string(),
-            })?;
+        let entry = storage.map.get_mut(location).context(NoDataInMemorySnafu {
+            path: location.to_string(),
+        })?;
         entry.tags = tags;
         Ok(())
     }

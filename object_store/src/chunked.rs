@@ -28,7 +28,10 @@ use futures::stream::BoxStream;
 use futures::StreamExt;
 
 use crate::path::Path;
-use crate::{Attributes, GetOptions, GetResult, GetResultPayload, ListResult, MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutResult};
+use crate::{
+    Attributes, GetOptions, GetResult, GetResultPayload, ListResult, MultipartUpload, ObjectMeta,
+    ObjectStore, PutMultipartOpts, PutOptions, PutResult,
+};
 use crate::{PutPayload, Result};
 
 /// Wraps a [`ObjectStore`] and makes its get response return chunks
@@ -171,8 +174,14 @@ impl ObjectStore for ChunkedStore {
         self.inner.copy_if_not_exists(from, to).await
     }
 
-    async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()> {
-        self.inner.update_object_attributes(location, attributes).await
+    async fn update_object_attributes(
+        &self,
+        location: &Path,
+        attributes: Attributes,
+    ) -> Result<()> {
+        self.inner
+            .update_object_attributes(location, attributes)
+            .await
     }
 
     async fn get_object_attributes(&self, location: &Path) -> Result<Attributes> {

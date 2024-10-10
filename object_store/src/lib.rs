@@ -524,12 +524,12 @@ pub mod throttle;
 #[cfg(feature = "cloud")]
 mod client;
 
-use std::collections::HashMap;
 #[cfg(feature = "cloud")]
 pub use client::{
     backoff::BackoffConfig, retry::RetryConfig, ClientConfigKey, ClientOptions, CredentialProvider,
     StaticCredentialProvider,
 };
+use std::collections::HashMap;
 
 #[cfg(feature = "cloud")]
 mod config;
@@ -779,9 +779,10 @@ pub trait ObjectStore: std::fmt::Display + Send + Sync + Debug + 'static {
         self.copy_if_not_exists(from, to).await?;
         self.delete(from).await
     }
-    
-    async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()>;
-    
+
+    async fn update_object_attributes(&self, location: &Path, attributes: Attributes)
+        -> Result<()>;
+
     async fn get_object_attributes(&self, location: &Path) -> Result<Attributes>;
 
     async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()>;
@@ -884,19 +885,29 @@ macro_rules! as_ref_impl {
             async fn rename_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
                 self.as_ref().rename_if_not_exists(from, to).await
             }
-            
-            async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()> {
-                self.as_ref().update_object_attributes(location, attributes).await
+
+            async fn update_object_attributes(
+                &self,
+                location: &Path,
+                attributes: Attributes,
+            ) -> Result<()> {
+                self.as_ref()
+                    .update_object_attributes(location, attributes)
+                    .await
             }
-            
+
             async fn get_object_attributes(&self, location: &Path) -> Result<Attributes> {
                 self.as_ref().get_object_attributes(location).await
             }
-            
-            async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
+
+            async fn set_object_tags(
+                &self,
+                location: &Path,
+                tags: HashMap<String, String>,
+            ) -> Result<()> {
                 self.as_ref().set_object_tags(location, tags).await
             }
-            
+
             async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>> {
                 self.as_ref().get_object_tags(location).await
             }

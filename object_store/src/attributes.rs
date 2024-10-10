@@ -50,7 +50,7 @@ pub enum Attribute {
     /// The String is a user-defined key
     Metadata(Cow<'static, str>),
     /// Specifies a provider-specific attribute
-    /// 
+    ///
     /// The String is the provider-specific key
     ProviderSpecific(Cow<'static, str>),
 }
@@ -119,7 +119,11 @@ impl Attributes {
     /// Insert a new [`Attribute`], [`AttributeValue`] pair
     ///
     /// Returns the previous value for `key` if any
-    pub fn insert(&mut self, key: Attribute, value: Option<AttributeValue>) -> Option<Option<AttributeValue>> {
+    pub fn insert(
+        &mut self,
+        key: Attribute,
+        value: Option<AttributeValue>,
+    ) -> Option<Option<AttributeValue>> {
         self.0.insert(key, value)
     }
 
@@ -137,9 +141,11 @@ impl Attributes {
     pub fn iter(&self) -> impl Iterator<Item = (&Attribute, &Option<AttributeValue>)> {
         self.0.iter()
     }
-    
+
     pub fn iter_set_values(&self) -> impl Iterator<Item = (&Attribute, &AttributeValue)> {
-        self.0.iter().filter_map(|(k, v)| v.as_ref().map(|v| (k, v)))
+        self.0
+            .iter()
+            .filter_map(|(k, v)| v.as_ref().map(|v| (k, v)))
     }
 
     /// Returns the number of [`Attribute`] in this collection

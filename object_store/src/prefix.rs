@@ -17,13 +17,16 @@
 
 //! An object store wrapper handling a constant path prefix
 
-use std::collections::HashMap;
 use bytes::Bytes;
 use futures::{stream::BoxStream, StreamExt, TryStreamExt};
+use std::collections::HashMap;
 use std::ops::Range;
 
 use crate::path::Path;
-use crate::{Attributes, GetOptions, GetResult, ListResult, MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result};
+use crate::{
+    Attributes, GetOptions, GetResult, ListResult, MultipartUpload, ObjectMeta, ObjectStore,
+    PutMultipartOpts, PutOptions, PutPayload, PutResult, Result,
+};
 
 #[doc(hidden)]
 #[deprecated(note = "Use PrefixStore")]
@@ -199,9 +202,15 @@ impl<T: ObjectStore> ObjectStore for PrefixStore<T> {
         self.inner.rename_if_not_exists(&full_from, &full_to).await
     }
 
-    async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()> {
+    async fn update_object_attributes(
+        &self,
+        location: &Path,
+        attributes: Attributes,
+    ) -> Result<()> {
         let full_path = self.full_path(location);
-        self.inner.update_object_attributes(&full_path, attributes).await
+        self.inner
+            .update_object_attributes(&full_path, attributes)
+            .await
     }
 
     async fn get_object_attributes(&self, location: &Path) -> Result<Attributes> {

@@ -16,17 +16,20 @@
 // under the License.
 
 //! A throttling object store wrapper
-use parking_lot::Mutex;
-use std::ops::Range;
-use std::{convert::TryInto, sync::Arc};
-use std::collections::HashMap;
 use crate::multipart::{MultipartStore, PartId};
-use crate::{path::Path, Attributes, GetResult, GetResultPayload, ListResult, MultipartId, MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result};
+use crate::{
+    path::Path, Attributes, GetResult, GetResultPayload, ListResult, MultipartId, MultipartUpload,
+    ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result,
+};
 use crate::{GetOptions, UploadPart};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{stream::BoxStream, FutureExt, StreamExt};
+use parking_lot::Mutex;
+use std::collections::HashMap;
+use std::ops::Range;
 use std::time::Duration;
+use std::{convert::TryInto, sync::Arc};
 
 /// Configuration settings for throttled store
 #[derive(Debug, Default, Clone, Copy)]
@@ -297,10 +300,16 @@ impl<T: ObjectStore> ObjectStore for ThrottledStore<T> {
         self.inner.rename_if_not_exists(from, to).await
     }
 
-    async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()> {
+    async fn update_object_attributes(
+        &self,
+        location: &Path,
+        attributes: Attributes,
+    ) -> Result<()> {
         sleep(self.config().wait_put_per_call).await;
 
-        self.inner.update_object_attributes(location, attributes).await
+        self.inner
+            .update_object_attributes(location, attributes)
+            .await
     }
 
     async fn get_object_attributes(&self, location: &Path) -> Result<Attributes> {

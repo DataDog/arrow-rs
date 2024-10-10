@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::ops::Deref;
 use crate::client::get::GetClient;
 use crate::client::header::{get_put_result, get_version, HeaderConfig};
 use crate::client::list::ListClient;
@@ -29,7 +28,10 @@ use crate::gcp::{GcpCredential, GcpCredentialProvider, GcpSigningCredentialProvi
 use crate::multipart::PartId;
 use crate::path::{Path, DELIMITER};
 use crate::util::hex_encode;
-use crate::{Attribute, Attributes, ClientOptions, GetOptions, ListResult, MultipartId, PutMode, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result, RetryConfig};
+use crate::{
+    Attribute, Attributes, ClientOptions, GetOptions, ListResult, MultipartId, PutMode,
+    PutMultipartOpts, PutOptions, PutPayload, PutResult, Result, RetryConfig,
+};
 use async_trait::async_trait;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
@@ -43,6 +45,7 @@ use reqwest::header::HeaderName;
 use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
+use std::ops::Deref;
 use std::sync::Arc;
 
 const VERSION_HEADER: &str = "x-goog-generation";
@@ -211,7 +214,9 @@ impl<'a> Request<'a> {
                     &format!("{}{}", USER_DEFINED_METADATA_HEADER_PREFIX, k_suffix),
                     v.as_ref(),
                 ),
-                Attribute::ProviderSpecific(attr_name) => builder.header(attr_name.deref(), v.as_ref()),
+                Attribute::ProviderSpecific(attr_name) => {
+                    builder.header(attr_name.deref(), v.as_ref())
+                }
             };
         }
 
@@ -579,11 +584,15 @@ impl GoogleCloudStorageClient {
 
         Ok(())
     }
-    
-    pub async fn update_object_attributes(&self, path: &Path, attributes: Attributes) -> Result<()> {
+
+    pub async fn update_object_attributes(
+        &self,
+        path: &Path,
+        attributes: Attributes,
+    ) -> Result<()> {
         let credential = self.get_credential().await?;
         let url = self.object_url_json(path);
-        
+
         let mut body = serde_json::Map::new();
         for (k, v) in attributes.iter() {
             let attr_val = match v {
@@ -591,15 +600,22 @@ impl GoogleCloudStorageClient {
                 Some(v) => serde_json::Value::String(v.to_string()),
             };
             match k {
-                Attribute::ContentDisposition => body.insert("contentDisposition".to_string(), attr_val),
+                Attribute::ContentDisposition => {
+                    body.insert("contentDisposition".to_string(), attr_val)
+                }
                 Attribute::ContentEncoding => body.insert("contentEncoding".to_string(), attr_val),
                 Attribute::ContentLanguage => body.insert("contentLanguage".to_string(), attr_val),
                 Attribute::ContentType => body.insert("contentType".to_string(), attr_val),
                 Attribute::CacheControl => body.insert("cacheControl".to_string(), attr_val),
-                Attribute::Metadata(attr_name) => {
-                    body.entry("metadata").or_insert_with(|| serde_json::Value::Object(serde_json::Map::new())).as_object_mut().unwrap().insert(attr_name.to_string(), attr_val)
+                Attribute::Metadata(attr_name) => body
+                    .entry("metadata")
+                    .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()))
+                    .as_object_mut()
+                    .unwrap()
+                    .insert(attr_name.to_string(), attr_val),
+                Attribute::ProviderSpecific(attr_name) => {
+                    body.insert(kebab_to_camel(attr_name), attr_val)
                 }
-                Attribute::ProviderSpecific(attr_name) => body.insert(kebab_to_camel(attr_name), attr_val),
             };
         }
 

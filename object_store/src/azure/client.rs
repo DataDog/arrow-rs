@@ -22,6 +22,7 @@ use crate::client::get::GetClient;
 use crate::client::header::{get_put_result, HeaderConfig};
 use crate::client::list::ListClient;
 use crate::client::retry::RetryExt;
+use crate::client::s3::Tagging;
 use crate::client::GetOptionsExt;
 use crate::multipart::PartId;
 use crate::path::DELIMITER;
@@ -47,7 +48,6 @@ use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 use url::Url;
-use crate::client::s3::Tagging;
 
 const VERSION_HEADER: &str = "x-ms-version-id";
 const USER_DEFINED_METADATA_HEADER_PREFIX: &str = "x-ms-meta-";
@@ -224,7 +224,9 @@ impl<'a> PutRequest<'a> {
                     &format!("{}{}", USER_DEFINED_METADATA_HEADER_PREFIX, k_suffix),
                     v.as_ref(),
                 ),
-                Attribute::ProviderSpecific(attr_name) => builder.header(attr_name.deref(), v.as_ref()),
+                Attribute::ProviderSpecific(attr_name) => {
+                    builder.header(attr_name.deref(), v.as_ref())
+                }
             };
         }
 
@@ -240,7 +242,10 @@ impl<'a> PutRequest<'a> {
         let credential = self.config.get_credential().await?;
         let response = self
             .builder
-            .header(CONTENT_LENGTH, self.payload.as_ref().map_or(0, |p| p.content_length()))
+            .header(
+                CONTENT_LENGTH,
+                self.payload.as_ref().map_or(0, |p| p.content_length()),
+            )
             .with_azure_authorization(&credential, &self.config.account)
             .retryable(&self.config.retry_config)
             .idempotent(self.idempotent)
@@ -489,7 +494,7 @@ impl AzureClient {
             _ => Err(Error::SASforSASNotSupported.into()),
         }
     }
-    
+
     pub async fn put_blob_attributes(&self, path: &Path, attributes: Attributes) -> Result<()> {
         self.put_request(path, None)
             .query(&[("comp", "metadata")])
@@ -498,7 +503,7 @@ impl AzureClient {
             .await?;
         Ok(())
     }
-    
+
     pub async fn get_blob_tagging(&self, path: &Path) -> Result<Tagging> {
         let credential = self.get_credential().await?;
         let url = self.config.path_url(path);

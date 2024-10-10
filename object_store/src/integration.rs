@@ -479,8 +479,14 @@ pub async fn put_get_attributes(integration: &dyn ObjectStore) {
         ),
         (Attribute::ContentEncoding, Some("gzip".into())),
         (Attribute::ContentLanguage, Some("en-US".into())),
-        (Attribute::ContentType, Some("text/html; charset=utf-8".into())),
-        (Attribute::Metadata("test_key".into()), Some("test_value".into())),
+        (
+            Attribute::ContentType,
+            Some("text/html; charset=utf-8".into()),
+        ),
+        (
+            Attribute::Metadata("test_key".into()),
+            Some("test_value".into()),
+        ),
     ]);
 
     let path = Path::from("attributes");

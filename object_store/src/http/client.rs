@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::ops::Deref;
 use crate::client::get::GetClient;
 use crate::client::header::HeaderConfig;
 use crate::client::retry::{self, RetryConfig, RetryExt};
@@ -34,6 +33,7 @@ use percent_encoding::percent_decode_str;
 use reqwest::{Method, Response, StatusCode};
 use serde::Deserialize;
 use snafu::{OptionExt, ResultExt, Snafu};
+use std::ops::Deref;
 use url::Url;
 
 #[derive(Debug, Snafu)]
@@ -186,7 +186,9 @@ impl Client {
                     }
                     // Ignore metadata attributes
                     Attribute::Metadata(_) => builder,
-                    Attribute::ProviderSpecific(attr_name) => builder.header(attr_name.deref(), v.as_ref()),
+                    Attribute::ProviderSpecific(attr_name) => {
+                        builder.header(attr_name.deref(), v.as_ref())
+                    }
                 };
             }
 

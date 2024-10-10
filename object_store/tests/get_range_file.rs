@@ -17,13 +17,13 @@
 
 //! Tests the default implementation of get_range handles GetResult::File correctly (#4350)
 
-use std::collections::HashMap;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use object_store::local::LocalFileSystem;
 use object_store::path::Path;
 use object_store::*;
+use std::collections::HashMap;
 use std::fmt::Formatter;
 use tempfile::tempdir;
 

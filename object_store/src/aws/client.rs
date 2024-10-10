@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::collections::HashMap;
-use std::ops::Deref;
 use crate::aws::builder::S3EncryptionHeaders;
 use crate::aws::checksum::Checksum;
 use crate::aws::credential::{AwsCredential, CredentialExt};
@@ -29,7 +27,10 @@ use crate::client::header::{get_etag, HeaderConfig};
 use crate::client::header::{get_put_result, get_version};
 use crate::client::list::ListClient;
 use crate::client::retry::RetryExt;
-use crate::client::s3::{CompleteMultipartUpload, CompleteMultipartUploadResult, InitiateMultipartUploadResult, ListResponse, Tagging};
+use crate::client::s3::{
+    CompleteMultipartUpload, CompleteMultipartUploadResult, InitiateMultipartUploadResult,
+    ListResponse, Tagging,
+};
 use crate::client::GetOptionsExt;
 use crate::multipart::PartId;
 use crate::path::DELIMITER;
@@ -56,6 +57,8 @@ use ring::digest;
 use ring::digest::Context;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
+use std::collections::HashMap;
+use std::ops::Deref;
 use std::sync::Arc;
 
 const VERSION_HEADER: &str = "x-amz-version-id";
@@ -336,7 +339,9 @@ impl<'a> Request<'a> {
                     &format!("{}{}", USER_DEFINED_METADATA_HEADER_PREFIX, k_suffix),
                     v.as_ref(),
                 ),
-                Attribute::ProviderSpecific(attr_name) => builder.header(attr_name.deref(), v.as_ref()),
+                Attribute::ProviderSpecific(attr_name) => {
+                    builder.header(attr_name.deref(), v.as_ref())
+                }
             };
         }
 
@@ -629,7 +634,7 @@ impl S3Client {
             version,
         })
     }
-    
+
     pub async fn get_object_tagging(&self, path: &Path) -> Result<Tagging> {
         let credential = self.config.get_session_credential().await?;
         let url = format!("{}?tagging", self.config.path_url(path));

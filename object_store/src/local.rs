@@ -16,14 +16,6 @@
 // under the License.
 
 //! An object store implementation for a local filesystem
-use std::fs::{metadata, symlink_metadata, File, Metadata, OpenOptions};
-use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
-use std::ops::Range;
-use std::sync::Arc;
-use std::time::SystemTime;
-use std::{collections::BTreeSet, convert::TryFrom, io};
-use std::{collections::VecDeque, path::PathBuf};
-use std::collections::HashMap;
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
@@ -31,6 +23,14 @@ use futures::{stream::BoxStream, StreamExt};
 use futures::{FutureExt, TryStreamExt};
 use parking_lot::Mutex;
 use snafu::{ensure, OptionExt, ResultExt, Snafu};
+use std::collections::HashMap;
+use std::fs::{metadata, symlink_metadata, File, Metadata, OpenOptions};
+use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
+use std::ops::Range;
+use std::sync::Arc;
+use std::time::SystemTime;
+use std::{collections::BTreeSet, convert::TryFrom, io};
+use std::{collections::VecDeque, path::PathBuf};
 use url::Url;
 use walkdir::{DirEntry, WalkDir};
 
