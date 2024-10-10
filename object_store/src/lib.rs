@@ -524,6 +524,7 @@ pub mod throttle;
 #[cfg(feature = "cloud")]
 mod client;
 
+use std::collections::HashMap;
 #[cfg(feature = "cloud")]
 pub use client::{
     backoff::BackoffConfig, retry::RetryConfig, ClientConfigKey, ClientOptions, CredentialProvider,
@@ -778,6 +779,14 @@ pub trait ObjectStore: std::fmt::Display + Send + Sync + Debug + 'static {
         self.copy_if_not_exists(from, to).await?;
         self.delete(from).await
     }
+    
+    async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()>;
+    
+    async fn get_object_attributes(&self, location: &Path) -> Result<Attributes>;
+
+    async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()>;
+
+    async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>>;
 }
 
 macro_rules! as_ref_impl {
@@ -874,6 +883,22 @@ macro_rules! as_ref_impl {
 
             async fn rename_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
                 self.as_ref().rename_if_not_exists(from, to).await
+            }
+            
+            async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()> {
+                self.as_ref().update_object_attributes(location, attributes).await
+            }
+            
+            async fn get_object_attributes(&self, location: &Path) -> Result<Attributes> {
+                self.as_ref().get_object_attributes(location).await
+            }
+            
+            async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
+                self.as_ref().set_object_tags(location, tags).await
+            }
+            
+            async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>> {
+                self.as_ref().get_object_tags(location).await
             }
         }
     };
@@ -1148,6 +1173,9 @@ pub struct PutOptions {
     ///
     /// Implementations that don't support an attribute should return an error
     pub attributes: Attributes,
+
+    #[cfg(feature = "test")]
+    pub faked_last_modified: Option<DateTime<Utc>>,
 }
 
 impl From<PutMode> for PutOptions {
@@ -1361,29 +1389,9 @@ mod tests {
     pub async fn tagging<F, Fut>(storage: Arc<dyn ObjectStore>, validate: bool, get_tags: F)
     where
         F: Fn(Path) -> Fut + Send + Sync,
-        Fut: std::future::Future<Output = Result<reqwest::Response>> + Send,
+        Fut: std::future::Future<Output = Result<client::s3::Tagging>> + Send,
     {
-        use bytes::Buf;
-        use serde::Deserialize;
-
-        #[derive(Deserialize)]
-        struct Tagging {
-            #[serde(rename = "TagSet")]
-            list: TagList,
-        }
-
-        #[derive(Debug, Deserialize)]
-        struct TagList {
-            #[serde(rename = "Tag")]
-            tags: Vec<Tag>,
-        }
-
-        #[derive(Debug, Deserialize, Eq, PartialEq)]
-        #[serde(rename_all = "PascalCase")]
-        struct Tag {
-            key: String,
-            value: String,
-        }
+        use client::s3::Tag;
 
         let tags = vec![
             Tag {
@@ -1426,10 +1434,7 @@ mod tests {
         }
 
         for path in [path, multi_path, buf_path] {
-            let resp = get_tags(path.clone()).await.unwrap();
-            let body = resp.bytes().await.unwrap();
-
-            let mut resp: Tagging = quick_xml::de::from_reader(body.reader()).unwrap();
+            let mut resp = get_tags(path.clone()).await.unwrap();
             resp.list.tags.sort_by(|a, b| a.key.cmp(&b.key));
             assert_eq!(resp.list.tags, tags);
         }

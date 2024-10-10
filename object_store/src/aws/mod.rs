@@ -34,6 +34,7 @@ use futures::{StreamExt, TryStreamExt};
 use reqwest::header::{HeaderName, IF_MATCH, IF_NONE_MATCH};
 use reqwest::{Method, StatusCode};
 use std::{sync::Arc, time::Duration};
+use std::collections::HashMap;
 use url::Url;
 
 use crate::aws::client::{RequestError, S3Client};
@@ -43,11 +44,7 @@ use crate::client::CredentialProvider;
 use crate::multipart::{MultipartStore, PartId};
 use crate::signer::Signer;
 use crate::util::STRICT_ENCODE_SET;
-use crate::{
-    Error, GetOptions, GetResult, ListResult, MultipartId, MultipartUpload, ObjectMeta,
-    ObjectStore, Path, PutMode, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result,
-    UploadPart,
-};
+use crate::{Attributes, Error, GetOptions, GetResult, ListResult, MultipartId, MultipartUpload, ObjectMeta, ObjectStore, Path, PutMode, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result, UploadPart};
 
 static TAGS_HEADER: HeaderName = HeaderName::from_static("x-amz-tagging");
 static COPY_SOURCE_HEADER: HeaderName = HeaderName::from_static("x-amz-copy-source");
@@ -314,6 +311,26 @@ impl ObjectStore for AmazonS3 {
             Err(e) => Err(e.into()),
             Ok(_) => Ok(()),
         }
+    }
+    
+    async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()> {
+        let req = self.client.copy_request(location, location).with_attributes(attributes);
+        req.send().await?;
+        Ok(())
+    }
+
+    async fn get_object_attributes(&self, location: &Path) -> Result<Attributes> {
+        let opts = GetOptions{ head: true, ..Default::default() };
+        self.get_opts(location, opts).await.map(|r| r.attributes)
+    }
+
+    async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
+        self.client.set_object_tags(location, tags).await
+    }
+
+    async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>> {
+        let response = self.client.get_object_tagging(location).await?;
+        Ok(response.into())
     }
 }
 

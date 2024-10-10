@@ -49,6 +49,10 @@ pub enum Attribute {
     ///
     /// The String is a user-defined key
     Metadata(Cow<'static, str>),
+    /// Specifies a provider-specific attribute
+    /// 
+    /// The String is the provider-specific key
+    ProviderSpecific(Cow<'static, str>),
 }
 
 /// The value of an [`Attribute`]
@@ -99,7 +103,7 @@ impl Deref for AttributeValue {
 /// Unlike [`ObjectMeta`](crate::ObjectMeta), [`Attributes`] are not returned by
 /// listing APIs
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
-pub struct Attributes(HashMap<Attribute, AttributeValue>);
+pub struct Attributes(HashMap<Attribute, Option<AttributeValue>>);
 
 impl Attributes {
     /// Create a new empty [`Attributes`]
@@ -115,23 +119,27 @@ impl Attributes {
     /// Insert a new [`Attribute`], [`AttributeValue`] pair
     ///
     /// Returns the previous value for `key` if any
-    pub fn insert(&mut self, key: Attribute, value: AttributeValue) -> Option<AttributeValue> {
+    pub fn insert(&mut self, key: Attribute, value: Option<AttributeValue>) -> Option<Option<AttributeValue>> {
         self.0.insert(key, value)
     }
 
     /// Returns the [`AttributeValue`] for `key` if any
-    pub fn get(&self, key: &Attribute) -> Option<&AttributeValue> {
+    pub fn get(&self, key: &Attribute) -> Option<&Option<AttributeValue>> {
         self.0.get(key)
     }
 
     /// Removes the [`AttributeValue`] for `key` if any
-    pub fn remove(&mut self, key: &Attribute) -> Option<AttributeValue> {
+    pub fn remove(&mut self, key: &Attribute) -> Option<Option<AttributeValue>> {
         self.0.remove(key)
     }
 
-    /// Returns an [`AttributesIter`] over this
-    pub fn iter(&self) -> AttributesIter<'_> {
-        self.into_iter()
+    /// Returns an [`Iterator`] over this
+    pub fn iter(&self) -> impl Iterator<Item = (&Attribute, &Option<AttributeValue>)> {
+        self.0.iter()
+    }
+    
+    pub fn iter_set_values(&self) -> impl Iterator<Item = (&Attribute, &AttributeValue)> {
+        self.0.iter().filter_map(|(k, v)| v.as_ref().map(|v| (k, v)))
     }
 
     /// Returns the number of [`Attribute`] in this collection
@@ -150,7 +158,7 @@ impl Attributes {
 impl<K, V> FromIterator<(K, V)> for Attributes
 where
     K: Into<Attribute>,
-    V: Into<AttributeValue>,
+    V: Into<Option<AttributeValue>>,
 {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
         Self(
@@ -162,27 +170,11 @@ where
 }
 
 impl<'a> IntoIterator for &'a Attributes {
-    type Item = (&'a Attribute, &'a AttributeValue);
-    type IntoIter = AttributesIter<'a>;
+    type Item = (&'a Attribute, &'a Option<AttributeValue>);
+    type IntoIter = std::collections::hash_map::Iter<'a, Attribute, Option<AttributeValue>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        AttributesIter(self.0.iter())
-    }
-}
-
-/// Iterator over [`Attributes`]
-#[derive(Debug)]
-pub struct AttributesIter<'a>(std::collections::hash_map::Iter<'a, Attribute, AttributeValue>);
-
-impl<'a> Iterator for AttributesIter<'a> {
-    type Item = (&'a Attribute, &'a AttributeValue);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.0.size_hint()
+        self.0.iter()
     }
 }
 
@@ -193,12 +185,12 @@ mod tests {
     #[test]
     fn test_attributes_basic() {
         let mut attributes = Attributes::from_iter([
-            (Attribute::ContentDisposition, "inline"),
-            (Attribute::ContentEncoding, "gzip"),
-            (Attribute::ContentLanguage, "en-US"),
-            (Attribute::ContentType, "test"),
-            (Attribute::CacheControl, "control"),
-            (Attribute::Metadata("key1".into()), "value1"),
+            (Attribute::ContentDisposition, Some("inline".into())),
+            (Attribute::ContentEncoding, Some("gzip".into())),
+            (Attribute::ContentLanguage, Some("en-US".into())),
+            (Attribute::ContentType, Some("test".into())),
+            (Attribute::CacheControl, Some("control".into())),
+            (Attribute::Metadata("key1".into()), Some("value1".into())),
         ]);
 
         assert!(!attributes.is_empty());
@@ -206,43 +198,43 @@ mod tests {
 
         assert_eq!(
             attributes.get(&Attribute::ContentType),
-            Some(&"test".into())
+            Some(&Some("test".into()))
         );
 
-        let metav = "control".into();
+        let metav = Some("control".into());
         assert_eq!(attributes.get(&Attribute::CacheControl), Some(&metav));
         assert_eq!(
-            attributes.insert(Attribute::CacheControl, "v1".into()),
+            attributes.insert(Attribute::CacheControl, Some("v1".into())),
             Some(metav)
         );
         assert_eq!(attributes.len(), 6);
 
         assert_eq!(
             attributes.remove(&Attribute::CacheControl).unwrap(),
-            "v1".into()
+            Some("v1".into())
         );
         assert_eq!(attributes.len(), 5);
 
-        let metav: AttributeValue = "v2".into();
+        let metav: Option<AttributeValue> = Some("v2".into());
         attributes.insert(Attribute::CacheControl, metav.clone());
         assert_eq!(attributes.get(&Attribute::CacheControl), Some(&metav));
         assert_eq!(attributes.len(), 6);
 
         assert_eq!(
             attributes.get(&Attribute::ContentDisposition),
-            Some(&"inline".into())
+            Some(&Some("inline".into()))
         );
         assert_eq!(
             attributes.get(&Attribute::ContentEncoding),
-            Some(&"gzip".into())
+            Some(&Some("gzip".into()))
         );
         assert_eq!(
             attributes.get(&Attribute::ContentLanguage),
-            Some(&"en-US".into())
+            Some(&Some("en-US".into()))
         );
         assert_eq!(
             attributes.get(&Attribute::Metadata("key1".into())),
-            Some(&"value1".into())
+            Some(&Some("value1".into()))
         );
     }
 }

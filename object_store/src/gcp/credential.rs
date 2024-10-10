@@ -44,7 +44,7 @@ use std::time::{Duration, Instant};
 use tracing::info;
 use url::Url;
 
-pub const DEFAULT_SCOPE: &str = "https://www.googleapis.com/auth/cloud-platform";
+pub const DEFAULT_SCOPE: &str = "https://www.googleapis.com/auth/devstorage.read_write";
 
 pub const DEFAULT_GCS_BASE_URL: &str = "https://storage.googleapis.com";
 

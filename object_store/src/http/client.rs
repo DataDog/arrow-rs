@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::ops::Deref;
 use crate::client::get::GetClient;
 use crate::client::header::HeaderConfig;
 use crate::client::retry::{self, RetryConfig, RetryExt};
@@ -171,7 +172,7 @@ impl Client {
             let mut builder = self.client.put(url);
 
             let mut has_content_type = false;
-            for (k, v) in &attributes {
+            for (k, v) in attributes.iter_set_values() {
                 builder = match k {
                     Attribute::CacheControl => builder.header(CACHE_CONTROL, v.as_ref()),
                     Attribute::ContentDisposition => {
@@ -185,6 +186,7 @@ impl Client {
                     }
                     // Ignore metadata attributes
                     Attribute::Metadata(_) => builder,
+                    Attribute::ProviderSpecific(attr_name) => builder.header(attr_name.deref(), v.as_ref()),
                 };
             }
 

@@ -22,13 +22,9 @@
 //! [ObjectStore::put_multipart] will upload data in blocks and write a blob from those blocks.
 //!
 //! Unused blocks will automatically be dropped after 7 days.
-use crate::{
-    multipart::{MultipartStore, PartId},
-    path::Path,
-    signer::Signer,
-    GetOptions, GetResult, ListResult, MultipartId, MultipartUpload, ObjectMeta, ObjectStore,
-    PutMultipartOpts, PutOptions, PutPayload, PutResult, Result, UploadPart,
-};
+
+use std::collections::HashMap;
+use crate::{multipart::{MultipartStore, PartId}, path::Path, signer::Signer, Attributes, GetOptions, GetResult, ListResult, MultipartId, MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result, UploadPart};
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use reqwest::Method;
@@ -133,6 +129,24 @@ impl ObjectStore for MicrosoftAzure {
 
     async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
         self.client.copy_request(from, to, false).await
+    }
+
+    async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()> {
+        self.client.put_blob_attributes(location, attributes).await
+    }
+
+    async fn get_object_attributes(&self, location: &Path) -> Result<Attributes> {
+        let opts = GetOptions{ head: true, ..Default::default() };
+        let result = self.client.get_opts(location, opts).await?;
+        Ok(result.attributes)
+    }
+
+    async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
+        self.client.put_blob_tagging(location, tags.into()).await
+    }
+
+    async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>> {
+        self.client.get_blob_tagging(location).await.map(|t| t.into())
     }
 }
 

@@ -34,17 +34,15 @@
 //! enabled by setting [crate::ClientConfigKey::Http1Only] to false.
 //!
 //! [lifecycle rule]: https://cloud.google.com/storage/docs/lifecycle#abort-mpu
+
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::client::CredentialProvider;
 use crate::gcp::credential::GCSAuthorizer;
 use crate::signer::Signer;
-use crate::{
-    multipart::PartId, path::Path, GetOptions, GetResult, ListResult, MultipartId, MultipartUpload,
-    ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result,
-    UploadPart,
-};
+use crate::{multipart::PartId, path::Path, Attributes, GetOptions, GetResult, ListResult, MultipartId, MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result, Error, UploadPart};
 use async_trait::async_trait;
 use client::GoogleCloudStorageClient;
 use futures::stream::BoxStream;
@@ -205,6 +203,24 @@ impl ObjectStore for GoogleCloudStorage {
 
     async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
         self.client.copy_request(from, to, true).await
+    }
+
+    async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()> {
+        self.client.update_object_attributes(location, attributes).await
+    }
+
+    async fn get_object_attributes(&self, location: &Path) -> Result<Attributes> {
+        let opts = GetOptions{ head: true, ..Default::default() };
+        let response = self.client.get_opts(location, opts).await?;
+        Ok(response.attributes)
+    }
+
+    async fn set_object_tags(&self, _: &Path, _: HashMap<String, String>) -> Result<()> {
+        Err(Error::NotSupported {source: "GCS does not support object tags".to_string().into()})
+    }
+
+    async fn get_object_tags(&self, _: &Path) -> Result<HashMap<String, String>> {
+        Err(Error::NotSupported {source: "GCS does not support object tags".to_string().into()})
     }
 }
 

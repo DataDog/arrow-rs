@@ -472,15 +472,15 @@ pub async fn put_get_delete_list(storage: &DynObjectStore) {
 pub async fn put_get_attributes(integration: &dyn ObjectStore) {
     // Test handling of attributes
     let attributes = Attributes::from_iter([
-        (Attribute::CacheControl, "max-age=604800"),
+        (Attribute::CacheControl, Some("max-age=604800".into())),
         (
             Attribute::ContentDisposition,
-            r#"attachment; filename="test.html""#,
+            Some(r#"attachment; filename="test.html""#.into()),
         ),
-        (Attribute::ContentEncoding, "gzip"),
-        (Attribute::ContentLanguage, "en-US"),
-        (Attribute::ContentType, "text/html; charset=utf-8"),
-        (Attribute::Metadata("test_key".into()), "test_value"),
+        (Attribute::ContentEncoding, Some("gzip".into())),
+        (Attribute::ContentLanguage, Some("en-US".into())),
+        (Attribute::ContentType, Some("text/html; charset=utf-8".into())),
+        (Attribute::Metadata("test_key".into()), Some("test_value".into())),
     ]);
 
     let path = Path::from("attributes");

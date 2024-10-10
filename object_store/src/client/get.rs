@@ -188,7 +188,7 @@ fn get_result<T: GetClient>(
             $(
             if let Some(x) = $headers.get($header) {
                 let x = x.to_str().context($err)?;
-                attributes.insert($attr, x.to_string().into());
+                attributes.insert($attr, Some(x.to_string().into()));
             }
             )*
             attributes
@@ -231,7 +231,7 @@ fn get_result<T: GetClient>(
                 if let Ok(val_str) = val.to_str() {
                     attributes.insert(
                         Attribute::Metadata(suffix.to_string().into()),
-                        val_str.to_string().into(),
+                        Some(val_str.to_string().into()),
                     );
                 } else {
                     return Err(GetResultError::InvalidMetadata {
@@ -424,7 +424,7 @@ mod tests {
         assert_eq!(res.range, 0..12);
         assert_eq!(
             res.attributes.get(&Attribute::Metadata("foo".into())),
-            Some(&"bar".into())
+            Some(&Some("bar".into()))
         );
         let bytes = res.bytes().await.unwrap();
         assert_eq!(bytes.len(), 12);

@@ -43,9 +43,11 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 use url::Url;
+use crate::client::s3::Tagging;
 
 const VERSION_HEADER: &str = "x-ms-version-id";
 const USER_DEFINED_METADATA_HEADER_PREFIX: &str = "x-ms-meta-";
@@ -65,6 +67,12 @@ pub(crate) enum Error {
     #[snafu(display("Error performing get request {}: {}", path, source))]
     GetRequest {
         source: crate::client::retry::Error,
+        path: String,
+    },
+
+    #[snafu(display("Error getting get response body {}: {}", path, source))]
+    GetResponseBody {
+        source: reqwest::Error,
         path: String,
     },
 
@@ -105,6 +113,9 @@ pub(crate) enum Error {
 
     #[snafu(display("Got invalid user delegation key response: {}", source))]
     DelegationKeyResponse { source: quick_xml::de::DeError },
+
+    #[snafu(display("Got invalid tags response: {}", source))]
+    InvalidTagsResponse { source: quick_xml::de::DeError },
 
     #[snafu(display("Generating SAS keys with SAS tokens auth is not supported"))]
     SASforSASNotSupported,
@@ -166,7 +177,7 @@ impl AzureConfig {
 struct PutRequest<'a> {
     path: &'a Path,
     config: &'a AzureConfig,
-    payload: PutPayload,
+    payload: Option<PutPayload>,
     builder: RequestBuilder,
     idempotent: bool,
 }
@@ -197,7 +208,7 @@ impl<'a> PutRequest<'a> {
     fn with_attributes(self, attributes: Attributes) -> Self {
         let mut builder = self.builder;
         let mut has_content_type = false;
-        for (k, v) in &attributes {
+        for (k, v) in attributes.iter_set_values() {
             builder = match k {
                 Attribute::CacheControl => builder.header(&MS_CACHE_CONTROL, v.as_ref()),
                 Attribute::ContentDisposition => {
@@ -213,6 +224,7 @@ impl<'a> PutRequest<'a> {
                     &format!("{}{}", USER_DEFINED_METADATA_HEADER_PREFIX, k_suffix),
                     v.as_ref(),
                 ),
+                Attribute::ProviderSpecific(attr_name) => builder.header(attr_name.deref(), v.as_ref()),
             };
         }
 
@@ -228,11 +240,11 @@ impl<'a> PutRequest<'a> {
         let credential = self.config.get_credential().await?;
         let response = self
             .builder
-            .header(CONTENT_LENGTH, self.payload.content_length())
+            .header(CONTENT_LENGTH, self.payload.as_ref().map_or(0, |p| p.content_length()))
             .with_azure_authorization(&credential, &self.config.account)
             .retryable(&self.config.retry_config)
             .idempotent(self.idempotent)
-            .payload(Some(self.payload))
+            .payload(self.payload)
             .send()
             .await
             .context(PutRequestSnafu {
@@ -265,7 +277,7 @@ impl AzureClient {
         self.config.get_credential().await
     }
 
-    fn put_request<'a>(&'a self, path: &'a Path, payload: PutPayload) -> PutRequest<'a> {
+    fn put_request<'a>(&'a self, path: &'a Path, payload: Option<PutPayload>) -> PutRequest<'a> {
         let url = self.config.path_url(path);
         let builder = self.client.request(Method::PUT, url);
 
@@ -286,7 +298,7 @@ impl AzureClient {
         opts: PutOptions,
     ) -> Result<PutResult> {
         let builder = self
-            .put_request(path, payload)
+            .put_request(path, Some(payload))
             .with_attributes(opts.attributes)
             .with_tags(opts.tags);
 
@@ -313,7 +325,7 @@ impl AzureClient {
         let content_id = format!("{part_idx:20}");
         let block_id = BASE64_STANDARD.encode(&content_id);
 
-        self.put_request(path, payload)
+        self.put_request(path, Some(payload))
             .query(&[("comp", "block"), ("blockid", &block_id)])
             .idempotent(true)
             .send()
@@ -336,7 +348,7 @@ impl AzureClient {
 
         let payload = BlockList { blocks }.to_xml().into();
         let response = self
-            .put_request(path, payload)
+            .put_request(path, Some(payload))
             .with_attributes(opts.attributes)
             .with_tags(opts.tags)
             .query(&[("comp", "blocklist")])
@@ -477,9 +489,17 @@ impl AzureClient {
             _ => Err(Error::SASforSASNotSupported.into()),
         }
     }
-
-    #[cfg(test)]
-    pub async fn get_blob_tagging(&self, path: &Path) -> Result<Response> {
+    
+    pub async fn put_blob_attributes(&self, path: &Path, attributes: Attributes) -> Result<()> {
+        self.put_request(path, None)
+            .query(&[("comp", "metadata")])
+            .with_attributes(attributes)
+            .send()
+            .await?;
+        Ok(())
+    }
+    
+    pub async fn get_blob_tagging(&self, path: &Path) -> Result<Tagging> {
         let credential = self.get_credential().await?;
         let url = self.config.path_url(path);
         let response = self
@@ -491,8 +511,33 @@ impl AzureClient {
             .await
             .context(GetRequestSnafu {
                 path: path.as_ref(),
+            })?
+            .bytes()
+            .await
+            .context(GetResponseBodySnafu {
+                path: path.as_ref(),
             })?;
+        let response: Tagging =
+            quick_xml::de::from_reader(response.reader()).context(InvalidTagsResponseSnafu)?;
         Ok(response)
+    }
+
+    pub async fn put_blob_tagging(&self, path: &Path, tagging: Tagging) -> Result<()> {
+        let credential = self.get_credential().await?;
+        let url = self.config.path_url(path);
+        let body = tagging.to_xml_document_for_azure()?;
+        self.client
+            .request(Method::PUT, url)
+            .query(&[("comp", "tags")])
+            .body(body)
+            .with_azure_authorization(&credential, &self.config.account)
+            .send_retry(&self.config.retry_config)
+            .await
+            .context(PutRequestSnafu {
+                path: path.as_ref(),
+            })?;
+
+        Ok(())
     }
 }
 

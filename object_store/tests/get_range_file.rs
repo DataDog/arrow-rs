@@ -17,6 +17,7 @@
 
 //! Tests the default implementation of get_range handles GetResult::File correctly (#4350)
 
+use std::collections::HashMap;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::BoxStream;
@@ -75,6 +76,22 @@ impl ObjectStore for MyStore {
     }
 
     async fn copy_if_not_exists(&self, _: &Path, _: &Path) -> Result<()> {
+        todo!()
+    }
+
+    async fn update_object_attributes(&self, _: &Path, _: Attributes) -> Result<()> {
+        todo!()
+    }
+
+    async fn get_object_attributes(&self, _: &Path) -> Result<Attributes> {
+        todo!()
+    }
+
+    async fn set_object_tags(&self, _: &Path, _: HashMap<String, String>) -> Result<()> {
+        todo!()
+    }
+
+    async fn get_object_tags(&self, _: &Path) -> Result<HashMap<String, String>> {
         todo!()
     }
 }

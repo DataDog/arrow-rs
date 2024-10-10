@@ -19,12 +19,9 @@
 use parking_lot::Mutex;
 use std::ops::Range;
 use std::{convert::TryInto, sync::Arc};
-
+use std::collections::HashMap;
 use crate::multipart::{MultipartStore, PartId};
-use crate::{
-    path::Path, GetResult, GetResultPayload, ListResult, MultipartId, MultipartUpload, ObjectMeta,
-    ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result,
-};
+use crate::{path::Path, Attributes, GetResult, GetResultPayload, ListResult, MultipartId, MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result};
 use crate::{GetOptions, UploadPart};
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -298,6 +295,30 @@ impl<T: ObjectStore> ObjectStore for ThrottledStore<T> {
         sleep(self.config().wait_put_per_call).await;
 
         self.inner.rename_if_not_exists(from, to).await
+    }
+
+    async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()> {
+        sleep(self.config().wait_put_per_call).await;
+
+        self.inner.update_object_attributes(location, attributes).await
+    }
+
+    async fn get_object_attributes(&self, location: &Path) -> Result<Attributes> {
+        sleep(self.config().wait_get_per_call).await;
+
+        self.inner.get_object_attributes(location).await
+    }
+
+    async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
+        sleep(self.config().wait_put_per_call).await;
+
+        self.inner.set_object_tags(location, tags).await
+    }
+
+    async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>> {
+        sleep(self.config().wait_get_per_call).await;
+
+        self.inner.get_object_tags(location).await
     }
 }
 

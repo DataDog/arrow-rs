@@ -561,8 +561,8 @@ mod tests {
         let store = Arc::new(InMemory::new()) as Arc<dyn ObjectStore>;
         let path = Path::from("file.txt");
         let attributes = Attributes::from_iter([
-            (Attribute::ContentType, "text/html"),
-            (Attribute::CacheControl, "max-age=604800"),
+            (Attribute::ContentType, Some("text/html".into())),
+            (Attribute::CacheControl, Some("max-age=604800".into())),
         ]);
 
         // Test put

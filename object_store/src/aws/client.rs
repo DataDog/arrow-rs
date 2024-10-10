@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::collections::HashMap;
+use std::ops::Deref;
 use crate::aws::builder::S3EncryptionHeaders;
 use crate::aws::checksum::Checksum;
 use crate::aws::credential::{AwsCredential, CredentialExt};
@@ -27,10 +29,7 @@ use crate::client::header::{get_etag, HeaderConfig};
 use crate::client::header::{get_put_result, get_version};
 use crate::client::list::ListClient;
 use crate::client::retry::RetryExt;
-use crate::client::s3::{
-    CompleteMultipartUpload, CompleteMultipartUploadResult, InitiateMultipartUploadResult,
-    ListResponse,
-};
+use crate::client::s3::{CompleteMultipartUpload, CompleteMultipartUploadResult, InitiateMultipartUploadResult, ListResponse, Tagging};
 use crate::client::GetOptionsExt;
 use crate::multipart::PartId;
 use crate::path::DELIMITER;
@@ -110,6 +109,12 @@ pub(crate) enum Error {
 
     #[snafu(display("Got invalid multipart response: {}", source))]
     InvalidMultipartResponse { source: quick_xml::de::DeError },
+
+    #[snafu(display("Error fetching metadata response body: {}", source))]
+    GetMetadataBody { source: reqwest::Error },
+
+    #[snafu(display("Got invalid tags response: {}", source))]
+    InvalidTagsResponse { source: quick_xml::de::DeError },
 
     #[snafu(display("Unable to extract metadata from headers: {}", source))]
     Metadata {
@@ -317,7 +322,7 @@ impl<'a> Request<'a> {
     pub fn with_attributes(self, attributes: Attributes) -> Self {
         let mut has_content_type = false;
         let mut builder = self.builder;
-        for (k, v) in &attributes {
+        for (k, v) in attributes.iter_set_values() {
             builder = match k {
                 Attribute::CacheControl => builder.header(CACHE_CONTROL, v.as_ref()),
                 Attribute::ContentDisposition => builder.header(CONTENT_DISPOSITION, v.as_ref()),
@@ -331,6 +336,7 @@ impl<'a> Request<'a> {
                     &format!("{}{}", USER_DEFINED_METADATA_HEADER_PREFIX, k_suffix),
                     v.as_ref(),
                 ),
+                Attribute::ProviderSpecific(attr_name) => builder.header(attr_name.deref(), v.as_ref()),
             };
         }
 
@@ -623,9 +629,8 @@ impl S3Client {
             version,
         })
     }
-
-    #[cfg(test)]
-    pub async fn get_object_tagging(&self, path: &Path) -> Result<Response> {
+    
+    pub async fn get_object_tagging(&self, path: &Path) -> Result<Tagging> {
         let credential = self.config.get_session_credential().await?;
         let url = format!("{}?tagging", self.config.path_url(path));
         let response = self
@@ -634,8 +639,31 @@ impl S3Client {
             .with_aws_sigv4(credential.authorizer(), None)
             .send_retry(&self.config.retry_config)
             .await
-            .map_err(|e| e.error(STORE, path.to_string()))?;
+            .map_err(|e| e.error(STORE, path.to_string()))?
+            .bytes()
+            .await
+            .context(GetMetadataBodySnafu)?;
+        let response: Tagging =
+            quick_xml::de::from_reader(response.reader()).context(InvalidTagsResponseSnafu)?;
         Ok(response)
+    }
+
+    pub async fn set_object_tags(&self, path: &Path, tags: HashMap<String, String>) -> Result<()> {
+        let credential = self.config.get_session_credential().await?;
+        let url = format!("{}?tagging", self.config.path_url(path));
+        let request = Tagging::from(tags);
+        let body = request.to_xml_document()?;
+
+        self.client
+            .request(Method::PUT, url)
+            .header(CONTENT_TYPE, "application/xml")
+            .body(body)
+            .with_aws_sigv4(credential.authorizer(), None)
+            .send_retry(&self.config.retry_config)
+            .await
+            .map_err(|e| e.error(STORE, path.to_string()))?;
+
+        Ok(())
     }
 }
 

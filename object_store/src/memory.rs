@@ -91,6 +91,7 @@ struct Entry {
     last_modified: DateTime<Utc>,
     attributes: Attributes,
     e_tag: usize,
+    tags: HashMap<String, String>,
 }
 
 impl Entry {
@@ -105,7 +106,18 @@ impl Entry {
             last_modified,
             e_tag,
             attributes,
+            tags: Default::default(),
         }
+    }
+
+    #[cfg(not(feature = "test"))]
+    fn new_from_put_opts(data: Bytes, e_tag: usize, opts: PutOptions) -> Self {
+        Self::new(data, Utc::now(), e_tag, opts.attributes)
+    }
+
+    #[cfg(feature = "test")]
+    fn new_from_put_opts(data: Bytes, e_tag: usize, opts: PutOptions) -> Self {
+        Self::new(data, opts.faked_last_modified.unwrap_or(Utc::now()), e_tag, opts.attributes)
     }
 }
 
@@ -208,9 +220,10 @@ impl ObjectStore for InMemory {
     ) -> Result<PutResult> {
         let mut storage = self.storage.write();
         let etag = storage.next_etag;
-        let entry = Entry::new(payload.into(), Utc::now(), etag, opts.attributes);
+        let put_mode = opts.mode.clone();
+        let entry = Entry::new_from_put_opts(payload.into(), etag, opts);
 
-        match opts.mode {
+        match put_mode {
             PutMode::Overwrite => storage.overwrite(location, entry),
             PutMode::Create => storage.create(location, entry)?,
             PutMode::Update(v) => storage.update(location, v, entry)?,
@@ -394,6 +407,40 @@ impl ObjectStore for InMemory {
         }
         storage.insert(to, entry.data, entry.attributes);
         Ok(())
+    }
+
+    async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()> {
+        let mut storage = self.storage.write();
+        let entry = storage
+            .map
+            .get_mut(location)
+            .context(NoDataInMemorySnafu {
+                path: location.to_string(),
+            })?;
+        entry.attributes = attributes;
+        Ok(())
+    }
+
+    async fn get_object_attributes(&self, location: &Path) -> Result<Attributes> {
+        let entry = self.entry(location).await?;
+        Ok(entry.attributes)
+    }
+
+    async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
+        let mut storage = self.storage.write();
+        let entry = storage
+            .map
+            .get_mut(location)
+            .context(NoDataInMemorySnafu {
+                path: location.to_string(),
+            })?;
+        entry.tags = tags;
+        Ok(())
+    }
+
+    async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>> {
+        let entry = self.entry(location).await?;
+        Ok(entry.tags)
     }
 }
 

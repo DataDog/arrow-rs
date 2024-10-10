@@ -16,15 +16,14 @@
 // under the License.
 
 //! An object store wrapper handling a constant path prefix
+
+use std::collections::HashMap;
 use bytes::Bytes;
 use futures::{stream::BoxStream, StreamExt, TryStreamExt};
 use std::ops::Range;
 
 use crate::path::Path;
-use crate::{
-    GetOptions, GetResult, ListResult, MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOpts,
-    PutOptions, PutPayload, PutResult, Result,
-};
+use crate::{Attributes, GetOptions, GetResult, ListResult, MultipartUpload, ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result};
 
 #[doc(hidden)]
 #[deprecated(note = "Use PrefixStore")]
@@ -198,6 +197,26 @@ impl<T: ObjectStore> ObjectStore for PrefixStore<T> {
         let full_from = self.full_path(from);
         let full_to = self.full_path(to);
         self.inner.rename_if_not_exists(&full_from, &full_to).await
+    }
+
+    async fn update_object_attributes(&self, location: &Path, attributes: Attributes) -> Result<()> {
+        let full_path = self.full_path(location);
+        self.inner.update_object_attributes(&full_path, attributes).await
+    }
+
+    async fn get_object_attributes(&self, location: &Path) -> Result<Attributes> {
+        let full_path = self.full_path(location);
+        self.inner.get_object_attributes(&full_path).await
+    }
+
+    async fn set_object_tags(&self, location: &Path, tags: HashMap<String, String>) -> Result<()> {
+        let full_path = self.full_path(location);
+        self.inner.set_object_tags(&full_path, tags).await
+    }
+
+    async fn get_object_tags(&self, location: &Path) -> Result<HashMap<String, String>> {
+        let full_path = self.full_path(location);
+        self.inner.get_object_tags(&full_path).await
     }
 }
 
