@@ -19,9 +19,13 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Deref;
 
+#[cfg(feature = "local-attributes")]
+use serde::{Deserialize, Serialize};
+
 /// Additional object attribute types
 #[non_exhaustive]
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
+#[cfg_attr(feature = "local-attributes", derive(Serialize, Deserialize))]
 pub enum Attribute {
     /// Specifies how the object should be handled by a browser
     ///
@@ -67,6 +71,7 @@ pub enum Attribute {
 /// let value = AttributeValue::from("foo".to_string());
 /// ```
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
+#[cfg_attr(feature = "local-attributes", derive(Serialize, Deserialize))]
 pub struct AttributeValue(Cow<'static, str>);
 
 impl AsRef<str> for AttributeValue {
@@ -103,6 +108,7 @@ impl Deref for AttributeValue {
 /// Unlike [`ObjectMeta`](crate::ObjectMeta), [`Attributes`] are not returned by
 /// listing APIs
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
+#[cfg_attr(feature = "local-attributes", derive(Serialize, Deserialize))]
 pub struct Attributes(HashMap<Attribute, Option<AttributeValue>>);
 
 impl Attributes {

@@ -156,6 +156,12 @@ pub(crate) enum Error {
 
     #[snafu(display("Upload aborted"))]
     Aborted,
+
+    #[cfg(feature = "local-attributes")]
+    #[snafu(display("Unable to serialize object attributes: {}", source))]
+    AttributesSerialization {
+        source: serde_json::Error,
+    },
 }
 
 impl From<Error> for super::Error {
@@ -351,7 +357,7 @@ fn is_valid_file_path(path: &Path) -> bool {
         Some(p) => match p.split_once('#') {
             Some((_, suffix)) if !suffix.is_empty() => {
                 // Valid if contains non-digits
-                !suffix.as_bytes().iter().all(|x| x.is_ascii_digit())
+                !suffix.as_bytes().iter().all(|x| x.is_ascii_digit()) && suffix != "attrs"
             }
             _ => true,
         },
@@ -371,6 +377,7 @@ impl ObjectStore for LocalFileSystem {
             return Err(crate::Error::NotImplemented);
         }
 
+        #[cfg(not(feature = "local-attributes"))]
         if !opts.attributes.is_empty() {
             return Err(crate::Error::NotImplemented);
         }
@@ -421,6 +428,22 @@ impl ObjectStore for LocalFileSystem {
                 return Err(err.into());
             }
 
+            #[cfg(feature = "local-attributes")]
+            if !opts.attributes.is_empty() {
+                let attrs_bytes = serde_json::to_vec(&opts.attributes)
+                    .map_err(|e| Error::AttributesSerialization { source: e })?;
+                let mut attrs_file = OpenOptions::new()
+                    .write(true)
+                    .open(attrs_sidecar_path(&path))
+                    .map_err(|e| Error::UnableToCreateFile {
+                        source: e,
+                        path: attrs_sidecar_path(&path),
+                    })?;
+                attrs_file
+                    .write_all(&attrs_bytes)
+                    .map_err(|e| Error::UnableToCopyDataToFile { source: e })?;
+            }
+
             Ok(PutResult {
                 e_tag,
                 version: None,
@@ -456,9 +479,24 @@ impl ObjectStore for LocalFileSystem {
                 None => 0..meta.size,
             };
 
+            #[cfg(feature = "local-attributes")]
+            let attrs = {
+                let attrs_path = attrs_sidecar_path(&path);
+                if attrs_path.exists() {
+                    let (mut file, _) = open_file(&attrs_path)?;
+                    serde_json::from_reader(&mut file)
+                        .map_err(|e| Error::AttributesSerialization { source: e })?
+                } else {
+                    Attributes::default()
+                }
+            };
+
+            #[cfg(not(feature = "local-attributes"))]
+            let attrs = Attributes::default();
+
             Ok(GetResult {
                 payload: GetResultPayload::File(file, path),
-                attributes: Attributes::default(),
+                attributes: attrs,
                 range,
                 meta,
             })
@@ -773,6 +811,13 @@ fn staged_upload_path(dest: &std::path::Path, suffix: &str) -> PathBuf {
     staging_path.push("#");
     staging_path.push(suffix);
     staging_path.into()
+}
+
+#[cfg(feature = "local-attributes")]
+fn attrs_sidecar_path(dest: &std::path::Path) -> PathBuf {
+    let mut sidecar_path = dest.as_os_str().to_owned();
+    sidecar_path.push("#attrs");
+    sidecar_path.into()
 }
 
 #[derive(Debug)]
@@ -1477,6 +1522,7 @@ mod tests {
             ("foo#123/test#34", false),
             ("foo😁/test#34", false),
             ("foo/test#😁34", true),
+            ("foo/test#attrs", false),
         ];
 
         for (case, expected) in cases {
