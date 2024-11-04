@@ -38,8 +38,9 @@ use crate::{
     maybe_spawn_blocking,
     path::{absolute_path_to_url, Path},
     util::InvalidGetRange,
-    Attributes, GetOptions, GetResult, GetResultPayload, ListResult, MultipartUpload, ObjectMeta,
-    ObjectStore, PutMode, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result, UploadPart,
+    Attribute, AttributeValue, Attributes, GetOptions, GetResult, GetResultPayload, ListResult,
+    MultipartUpload, ObjectMeta, ObjectStore, PutMode, PutMultipartOpts, PutOptions, PutPayload,
+    PutResult, Result, UploadPart,
 };
 
 /// A specialized `Error` for filesystem object store-related errors
@@ -430,10 +431,13 @@ impl ObjectStore for LocalFileSystem {
 
             #[cfg(feature = "local-attributes")]
             if !opts.attributes.is_empty() {
-                let attrs_bytes = serde_json::to_vec(&opts.attributes)
+                let attrs_vec: Vec<(&Attribute, &AttributeValue)> =
+                    opts.attributes.iter_set_values().collect::<Vec<_>>();
+                let attrs_bytes = serde_json::to_vec(&attrs_vec)
                     .map_err(|e| Error::AttributesSerialization { source: e })?;
                 let mut attrs_file = OpenOptions::new()
                     .write(true)
+                    .create_new(true)
                     .open(attrs_sidecar_path(&path))
                     .map_err(|e| Error::UnableToCreateFile {
                         source: e,
@@ -484,8 +488,10 @@ impl ObjectStore for LocalFileSystem {
                 let attrs_path = attrs_sidecar_path(&path);
                 if attrs_path.exists() {
                     let (mut file, _) = open_file(&attrs_path)?;
-                    serde_json::from_reader(&mut file)
-                        .map_err(|e| Error::AttributesSerialization { source: e })?
+                    let attrs_vec: Vec<(Attribute, AttributeValue)> =
+                        serde_json::from_reader(&mut file)
+                            .map_err(|e| Error::AttributesSerialization { source: e })?;
+                    Attributes::from_iter(attrs_vec)
                 } else {
                     Attributes::default()
                 }
@@ -1143,6 +1149,11 @@ mod tests {
         copy_rename_nonexistent_object(&integration).await;
         stream_get(&integration).await;
         put_opts(&integration, false).await;
+
+        #[cfg(feature = "local-attributes")]
+        {
+            put_get_attributes(&integration).await;
+        }
     }
 
     #[test]
