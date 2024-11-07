@@ -250,7 +250,7 @@ mod tests {
 
     use crate::memory::InMemory;
     use crate::path::Path;
-    use crate::throttle::{ThrottleConfig, ThrottledStore};
+    use crate::throttle::{ThrottleConfig, ThrottleDuration, ThrottledStore};
     use crate::ObjectStore;
 
     use super::*;
@@ -258,7 +258,7 @@ mod tests {
     #[tokio::test]
     async fn test_concurrency() {
         let config = ThrottleConfig {
-            wait_put_per_call: Duration::from_millis(1),
+            wait_put_per_call: ThrottleDuration::Constant(Duration::from_millis(1)),
             ..Default::default()
         };
 

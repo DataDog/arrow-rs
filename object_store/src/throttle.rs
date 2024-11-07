@@ -26,10 +26,59 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{stream::BoxStream, FutureExt, StreamExt};
 use parking_lot::Mutex;
+use rand::Rng;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::time::Duration;
 use std::{convert::TryInto, sync::Arc};
+
+/// ThrottleDuration allows for varying throttle behavior.
+#[derive(Debug, Default, Clone, Copy)]
+pub enum ThrottleDuration {
+    /// No waiting time
+    #[default]
+    Zero,
+
+    /// Constant waiting time
+    Constant(Duration),
+
+    /// Random waiting time
+    Random(Duration, Duration),
+}
+
+impl std::ops::Mul<u32> for ThrottleDuration {
+    type Output = Self;
+
+    fn mul(self, rhs: u32) -> Self::Output {
+        match self {
+            ThrottleDuration::Zero => ThrottleDuration::Zero,
+            ThrottleDuration::Constant(d) => ThrottleDuration::Constant(d * rhs),
+            ThrottleDuration::Random(min, max) => ThrottleDuration::Random(min * rhs, max * rhs),
+        }
+    }
+}
+
+impl std::ops::Add for ThrottleDuration {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (ThrottleDuration::Zero, ThrottleDuration::Zero) => ThrottleDuration::Zero,
+            (ThrottleDuration::Constant(a), ThrottleDuration::Constant(b)) => {
+                ThrottleDuration::Constant(a + b)
+            }
+            (ThrottleDuration::Random(a, b), ThrottleDuration::Random(c, d)) => {
+                ThrottleDuration::Random(a + c, b + d)
+            }
+            (ThrottleDuration::Zero, b) => b,
+            (a, ThrottleDuration::Zero) => a,
+            (ThrottleDuration::Constant(a), ThrottleDuration::Random(c, d))
+            | (ThrottleDuration::Random(c, d), ThrottleDuration::Constant(a)) => {
+                ThrottleDuration::Random(a + c, a + d)
+            }
+        }
+    }
+}
 
 /// Configuration settings for throttled store
 #[derive(Debug, Default, Clone, Copy)]
@@ -38,7 +87,7 @@ pub struct ThrottleConfig {
     ///
     /// Sleeping is done before the underlying store is called and independently of the success of
     /// the operation.
-    pub wait_delete_per_call: Duration,
+    pub wait_delete_per_call: ThrottleDuration,
 
     /// Sleep duration for every byte received during [`get`](ThrottledStore::get).
     ///
@@ -48,21 +97,21 @@ pub struct ThrottleConfig {
     /// Note that the per-byte sleep only happens as the user consumes the output bytes. Should
     /// there be an intermediate failure (i.e. after partly consuming the output bytes), the
     /// resulting sleep time will be partial as well.
-    pub wait_get_per_byte: Duration,
+    pub wait_get_per_byte: ThrottleDuration,
 
     /// Sleep duration for every call to [`get`](ThrottledStore::get).
     ///
     /// Sleeping is done before the underlying store is called and independently of the success of
     /// the operation. The sleep duration is additive to
     /// [`wait_get_per_byte`](Self::wait_get_per_byte).
-    pub wait_get_per_call: Duration,
+    pub wait_get_per_call: ThrottleDuration,
 
     /// Sleep duration for every call to [`list`](ThrottledStore::list).
     ///
     /// Sleeping is done before the underlying store is called and independently of the success of
     /// the operation. The sleep duration is additive to
     /// [`wait_list_per_entry`](Self::wait_list_per_entry).
-    pub wait_list_per_call: Duration,
+    pub wait_list_per_call: ThrottleDuration,
 
     /// Sleep duration for every entry received during [`list`](ThrottledStore::list).
     ///
@@ -72,7 +121,7 @@ pub struct ThrottleConfig {
     /// Note that the per-entry sleep only happens as the user consumes the output entries. Should
     /// there be an intermediate failure (i.e. after partly consuming the output entries), the
     /// resulting sleep time will be partial as well.
-    pub wait_list_per_entry: Duration,
+    pub wait_list_per_entry: ThrottleDuration,
 
     /// Sleep duration for every call to
     /// [`list_with_delimiter`](ThrottledStore::list_with_delimiter).
@@ -80,7 +129,7 @@ pub struct ThrottleConfig {
     /// Sleeping is done before the underlying store is called and independently of the success of
     /// the operation. The sleep duration is additive to
     /// [`wait_list_with_delimiter_per_entry`](Self::wait_list_with_delimiter_per_entry).
-    pub wait_list_with_delimiter_per_call: Duration,
+    pub wait_list_with_delimiter_per_call: ThrottleDuration,
 
     /// Sleep duration for every entry received during
     /// [`list_with_delimiter`](ThrottledStore::list_with_delimiter).
@@ -88,19 +137,30 @@ pub struct ThrottleConfig {
     /// Sleeping is performed after the underlying store returned and only for successful gets. The
     /// sleep duration is additive to
     /// [`wait_list_with_delimiter_per_call`](Self::wait_list_with_delimiter_per_call).
-    pub wait_list_with_delimiter_per_entry: Duration,
+    pub wait_list_with_delimiter_per_entry: ThrottleDuration,
 
     /// Sleep duration for every call to [`put`](ThrottledStore::put).
     ///
     /// Sleeping is done before the underlying store is called and independently of the success of
     /// the operation.
-    pub wait_put_per_call: Duration,
+    pub wait_put_per_call: ThrottleDuration,
 }
 
 /// Sleep only if non-zero duration
-async fn sleep(duration: Duration) {
-    if !duration.is_zero() {
-        tokio::time::sleep(duration).await
+async fn sleep(duration: ThrottleDuration) {
+    match duration {
+        ThrottleDuration::Zero => {}
+        ThrottleDuration::Constant(d) => {
+            if !d.is_zero() {
+                tokio::time::sleep(d).await;
+            }
+        }
+        ThrottleDuration::Random(min, max) => {
+            let d = Duration::from_secs_f32(
+                rand::thread_rng().gen_range(min.as_secs_f32()..max.as_secs_f32()),
+            );
+            tokio::time::sleep(d).await;
+        }
     }
 }
 
@@ -336,7 +396,7 @@ fn usize_to_u32_saturate(x: usize) -> u32 {
     x.try_into().unwrap_or(u32::MAX)
 }
 
-fn throttle_get(result: GetResult, wait_get_per_byte: Duration) -> GetResult {
+fn throttle_get(result: GetResult, wait_get_per_byte: ThrottleDuration) -> GetResult {
     let s = match result.payload {
         GetResultPayload::Stream(s) => s,
         GetResultPayload::File(_, _) => unimplemented!(),
@@ -358,7 +418,7 @@ fn throttle_stream<T: Send + 'static, E: Send + 'static, F>(
     delay: F,
 ) -> BoxStream<'_, Result<T, E>>
 where
-    F: Fn(&T) -> Duration + Send + Sync + 'static,
+    F: Fn(&T) -> ThrottleDuration + Send + Sync + 'static,
 {
     stream
         .then(move |result| {
@@ -402,7 +462,7 @@ impl<T: MultipartStore> MultipartStore for ThrottledStore<T> {
 #[derive(Debug)]
 struct ThrottledUpload {
     upload: Box<dyn MultipartUpload>,
-    sleep: Duration,
+    sleep: ThrottleDuration,
 }
 
 #[async_trait]
@@ -434,7 +494,6 @@ mod tests {
     use tokio::time::Instant;
 
     const WAIT_TIME: Duration = Duration::from_millis(100);
-    const ZERO: Duration = Duration::from_millis(0); // Duration::default isn't constant
 
     macro_rules! assert_bounds {
         ($d:expr, $lower:expr) => {
@@ -472,7 +531,7 @@ mod tests {
         assert_bounds!(measure_delete(&store, Some(0)).await, 0);
         assert_bounds!(measure_delete(&store, Some(10)).await, 0);
 
-        store.config_mut(|cfg| cfg.wait_delete_per_call = WAIT_TIME);
+        store.config_mut(|cfg| cfg.wait_delete_per_call = ThrottleDuration::Constant(WAIT_TIME));
         assert_bounds!(measure_delete(&store, None).await, 1);
         assert_bounds!(measure_delete(&store, Some(0)).await, 1);
         assert_bounds!(measure_delete(&store, Some(10)).await, 1);
@@ -489,20 +548,20 @@ mod tests {
         assert_bounds!(measure_get(&store, Some(0)).await, 0);
         assert_bounds!(measure_get(&store, Some(10)).await, 0);
 
-        store.config_mut(|cfg| cfg.wait_get_per_call = WAIT_TIME);
+        store.config_mut(|cfg| cfg.wait_get_per_call = ThrottleDuration::Constant(WAIT_TIME));
         assert_bounds!(measure_get(&store, None).await, 1);
         assert_bounds!(measure_get(&store, Some(0)).await, 1);
         assert_bounds!(measure_get(&store, Some(10)).await, 1);
 
         store.config_mut(|cfg| {
-            cfg.wait_get_per_call = ZERO;
-            cfg.wait_get_per_byte = WAIT_TIME;
+            cfg.wait_get_per_call = ThrottleDuration::Zero;
+            cfg.wait_get_per_byte = ThrottleDuration::Constant(WAIT_TIME);
         });
         assert_bounds!(measure_get(&store, Some(2)).await, 2);
 
         store.config_mut(|cfg| {
-            cfg.wait_get_per_call = WAIT_TIME;
-            cfg.wait_get_per_byte = WAIT_TIME;
+            cfg.wait_get_per_call = ThrottleDuration::Constant(WAIT_TIME);
+            cfg.wait_get_per_byte = ThrottleDuration::Constant(WAIT_TIME);
         });
         assert_bounds!(measure_get(&store, Some(2)).await, 3);
     }
@@ -517,19 +576,19 @@ mod tests {
         assert_bounds!(measure_list(&store, 0).await, 0);
         assert_bounds!(measure_list(&store, 10).await, 0);
 
-        store.config_mut(|cfg| cfg.wait_list_per_call = WAIT_TIME);
+        store.config_mut(|cfg| cfg.wait_list_per_call = ThrottleDuration::Constant(WAIT_TIME));
         assert_bounds!(measure_list(&store, 0).await, 1);
         assert_bounds!(measure_list(&store, 10).await, 1);
 
         store.config_mut(|cfg| {
-            cfg.wait_list_per_call = ZERO;
-            cfg.wait_list_per_entry = WAIT_TIME;
+            cfg.wait_list_per_call = ThrottleDuration::Zero;
+            cfg.wait_list_per_entry = ThrottleDuration::Constant(WAIT_TIME);
         });
         assert_bounds!(measure_list(&store, 2).await, 2);
 
         store.config_mut(|cfg| {
-            cfg.wait_list_per_call = WAIT_TIME;
-            cfg.wait_list_per_entry = WAIT_TIME;
+            cfg.wait_list_per_call = ThrottleDuration::Constant(WAIT_TIME);
+            cfg.wait_list_per_entry = ThrottleDuration::Constant(WAIT_TIME);
         });
         assert_bounds!(measure_list(&store, 2).await, 3);
     }
@@ -544,19 +603,21 @@ mod tests {
         assert_bounds!(measure_list_with_delimiter(&store, 0).await, 0);
         assert_bounds!(measure_list_with_delimiter(&store, 10).await, 0);
 
-        store.config_mut(|cfg| cfg.wait_list_with_delimiter_per_call = WAIT_TIME);
+        store.config_mut(|cfg| {
+            cfg.wait_list_with_delimiter_per_call = ThrottleDuration::Constant(WAIT_TIME)
+        });
         assert_bounds!(measure_list_with_delimiter(&store, 0).await, 1);
         assert_bounds!(measure_list_with_delimiter(&store, 10).await, 1);
 
         store.config_mut(|cfg| {
-            cfg.wait_list_with_delimiter_per_call = ZERO;
-            cfg.wait_list_with_delimiter_per_entry = WAIT_TIME;
+            cfg.wait_list_with_delimiter_per_call = ThrottleDuration::Zero;
+            cfg.wait_list_with_delimiter_per_entry = ThrottleDuration::Constant(WAIT_TIME);
         });
         assert_bounds!(measure_list_with_delimiter(&store, 2).await, 2);
 
         store.config_mut(|cfg| {
-            cfg.wait_list_with_delimiter_per_call = WAIT_TIME;
-            cfg.wait_list_with_delimiter_per_entry = WAIT_TIME;
+            cfg.wait_list_with_delimiter_per_call = ThrottleDuration::Constant(WAIT_TIME);
+            cfg.wait_list_with_delimiter_per_entry = ThrottleDuration::Constant(WAIT_TIME);
         });
         assert_bounds!(measure_list_with_delimiter(&store, 2).await, 3);
     }
@@ -569,11 +630,11 @@ mod tests {
         assert_bounds!(measure_put(&store, 0).await, 0);
         assert_bounds!(measure_put(&store, 10).await, 0);
 
-        store.config_mut(|cfg| cfg.wait_put_per_call = WAIT_TIME);
+        store.config_mut(|cfg| cfg.wait_put_per_call = ThrottleDuration::Constant(WAIT_TIME));
         assert_bounds!(measure_put(&store, 0).await, 1);
         assert_bounds!(measure_put(&store, 10).await, 1);
 
-        store.config_mut(|cfg| cfg.wait_put_per_call = ZERO);
+        store.config_mut(|cfg| cfg.wait_put_per_call = ThrottleDuration::Zero);
         assert_bounds!(measure_put(&store, 0).await, 0);
     }
 
