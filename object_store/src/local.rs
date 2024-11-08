@@ -437,7 +437,8 @@ impl ObjectStore for LocalFileSystem {
                     .map_err(|e| Error::AttributesSerialization { source: e })?;
                 let mut attrs_file = OpenOptions::new()
                     .write(true)
-                    .create_new(true)
+                    .create(true)
+                    .truncate(true)
                     .open(attrs_sidecar_path(&path))
                     .map_err(|e| Error::UnableToCreateFile {
                         source: e,
