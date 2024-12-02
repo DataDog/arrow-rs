@@ -51,6 +51,7 @@ use std::sync::Arc;
 const VERSION_HEADER: &str = "x-goog-generation";
 const DEFAULT_CONTENT_TYPE: &str = "application/octet-stream";
 const USER_DEFINED_METADATA_HEADER_PREFIX: &str = "x-goog-meta-";
+const GOOG_METADATA_HEADER_PREFIX: &str = "x-goog-";
 
 static VERSION_MATCH: HeaderName = HeaderName::from_static("x-goog-if-generation-match");
 
@@ -636,7 +637,7 @@ impl GoogleCloudStorageClient {
 
 fn kebab_to_camel(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
-    let mut capitalize = true;
+    let mut capitalize = false;
     for c in s.chars() {
         if c == '-' {
             capitalize = true;
@@ -658,6 +659,7 @@ impl GetClient for GoogleCloudStorageClient {
         last_modified_required: true,
         version_header: Some(VERSION_HEADER),
         user_defined_metadata_prefix: Some(USER_DEFINED_METADATA_HEADER_PREFIX),
+        provider_specific_metadata_prefix: Some(GOOG_METADATA_HEADER_PREFIX),
     };
 
     /// Perform a get request <https://cloud.google.com/storage/docs/xml-api/get-object-download>

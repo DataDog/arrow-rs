@@ -242,6 +242,25 @@ fn get_result<T: GetClient>(
         }
     }
 
+    // Provider-specific metadata must be processed after user-defined metadata, since the
+    // user-defined metadata prefix usually matches the provider-specific prefix.
+    if let Some(prefix) = T::HEADER_CONFIG.provider_specific_metadata_prefix {
+        for (key, val) in response.headers() {
+            if let Some(suffix) = key.as_str().strip_prefix(prefix) {
+                if let Ok(val_str) = val.to_str() {
+                    attributes.insert(
+                        Attribute::ProviderSpecific(suffix.to_string().into()),
+                        Some(val_str.to_string().into()),
+                    );
+                } else {
+                    return Err(GetResultError::InvalidMetadata {
+                        key: key.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
     let stream = response
         .bytes_stream()
         .map_err(|source| crate::Error::Generic {
@@ -275,6 +294,7 @@ mod tests {
             last_modified_required: false,
             version_header: None,
             user_defined_metadata_prefix: Some("x-test-meta-"),
+            provider_specific_metadata_prefix: Some("x-test-"),
         };
 
         async fn get_request(&self, _: &Path, _: GetOptions) -> Result<Response> {

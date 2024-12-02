@@ -42,6 +42,9 @@ pub struct HeaderConfig {
 
     /// The user defined metadata prefix if any
     pub user_defined_metadata_prefix: Option<&'static str>,
+
+    /// The provider-specific metadata prefix if any
+    pub provider_specific_metadata_prefix: Option<&'static str>,
 }
 
 #[derive(Debug, Snafu)]

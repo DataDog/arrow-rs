@@ -326,6 +326,7 @@ impl GetClient for Client {
         last_modified_required: false,
         version_header: None,
         user_defined_metadata_prefix: None,
+        provider_specific_metadata_prefix: None,
     };
 
     async fn get_request(&self, path: &Path, options: GetOptions) -> Result<Response> {

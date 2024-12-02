@@ -51,6 +51,7 @@ use url::Url;
 
 const VERSION_HEADER: &str = "x-ms-version-id";
 const USER_DEFINED_METADATA_HEADER_PREFIX: &str = "x-ms-meta-";
+const MS_METADATA_HEADER_PREFIX: &str = "x-ms-";
 static MS_CACHE_CONTROL: HeaderName = HeaderName::from_static("x-ms-blob-cache-control");
 static MS_CONTENT_TYPE: HeaderName = HeaderName::from_static("x-ms-blob-content-type");
 static MS_CONTENT_DISPOSITION: HeaderName =
@@ -555,6 +556,7 @@ impl GetClient for AzureClient {
         last_modified_required: true,
         version_header: Some(VERSION_HEADER),
         user_defined_metadata_prefix: Some(USER_DEFINED_METADATA_HEADER_PREFIX),
+        provider_specific_metadata_prefix: Some(MS_METADATA_HEADER_PREFIX),
     };
 
     /// Make an Azure GET request
