@@ -17,7 +17,7 @@
 
 use crate::client::pagination::stream_paginated;
 use crate::path::Path;
-use crate::Result;
+use crate::{Error, Result};
 use crate::{ListResult, ObjectMeta};
 use async_trait::async_trait;
 use futures::stream::BoxStream;
@@ -38,21 +38,13 @@ pub trait ListClient: Send + Sync + 'static {
     /// A list request that includes object versions, for stores that support versioning
     async fn list_versions_request(
         &self,
-        prefix: Option<&str>,
-        delimiter: bool,
-        key_token: Option<&str>,
+        _prefix: Option<&str>,
+        _delimiter: bool,
+        _key_token: Option<&str>,
         _version_token: Option<&str>,
-        offset: Option<&str>,
+        _offset: Option<&str>,
     ) -> Result<(ListResult, Option<String>, Option<String>)> {
-        // Default implementation just forwards to list_request
-        // This method should be overridden by stores that support versioning
-        match self
-            .list_request(prefix, delimiter, key_token, offset)
-            .await
-        {
-            Ok((list_result, next_token)) => Ok((list_result, next_token, None)),
-            Err(e) => Err(e),
-        }
+        Err(Error::NotImplemented)
     }
 }
 
