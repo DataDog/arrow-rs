@@ -59,6 +59,42 @@ impl TryFrom<ListResponse> for ListResult {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
+pub struct ListVersionsResponse {
+    #[serde(default)]
+    pub version: Vec<ListContents>,
+    #[serde(default)]
+    pub common_prefixes: Vec<ListPrefix>,
+    #[serde(default)]
+    pub next_key_marker: Option<String>,
+    #[serde(default)]
+    pub next_version_id_marker: Option<String>,
+}
+
+impl TryFrom<ListVersionsResponse> for ListResult {
+    type Error = Error;
+
+    fn try_from(value: ListVersionsResponse) -> Result<Self> {
+        let common_prefixes = value
+            .common_prefixes
+            .into_iter()
+            .map(|x| Ok(Path::parse(x.prefix)?))
+            .collect::<Result<_>>()?;
+
+        let objects = value
+            .version
+            .into_iter()
+            .map(TryFrom::try_from)
+            .collect::<Result<_>>()?;
+
+        Ok(Self {
+            common_prefixes,
+            objects,
+        })
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct ListPrefix {
     pub prefix: String,
 }

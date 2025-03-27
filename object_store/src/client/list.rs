@@ -40,12 +40,19 @@ pub trait ListClient: Send + Sync + 'static {
         &self,
         prefix: Option<&str>,
         delimiter: bool,
-        token: Option<&str>,
+        key_token: Option<&str>,
+        _version_token: Option<&str>,
         offset: Option<&str>,
-    ) -> Result<(ListResult, Option<String>)> {
+    ) -> Result<(ListResult, Option<String>, Option<String>)> {
         // Default implementation just forwards to list_request
         // This method should be overridden by stores that support versioning
-        self.list_request(prefix, delimiter, token, offset).await
+        match self
+            .list_request(prefix, delimiter, key_token, offset)
+            .await
+        {
+            Ok((list_result, next_token)) => Ok((list_result, next_token, None)),
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -115,12 +122,23 @@ impl<T: ListClient> ListClientExt for T {
             .filter(|x| !x.as_ref().is_empty())
             .map(|p| format!("{}{}", p.as_ref(), crate::path::DELIMITER));
 
-        stream_paginated(prefix, move |prefix, token| async move {
-            let (r, next_token) = self
-                .list_versions_request(prefix.as_deref(), false, token.as_deref(), None)
-                .await?;
-            Ok((r, prefix, next_token))
-        })
+        stream_paginated(
+            prefix,
+            move |prefix, tokens: Option<(Option<String>, Option<String>)>| async move {
+                let token = tokens.as_ref().and_then(|t| t.0.as_deref());
+                let version_token = tokens.as_ref().and_then(|t| t.1.as_deref());
+                let (r, next_token, next_version) = self
+                    .list_versions_request(prefix.as_deref(), false, token, version_token, None)
+                    .await?;
+                let next_tokens = match (next_token, next_version) {
+                    (Some(t), Some(v)) => Some((Some(t), Some(v))),
+                    (Some(t), None) => Some((Some(t), None)),
+                    (None, Some(v)) => Some((None, Some(v))),
+                    (None, None) => None,
+                };
+                Ok((r, prefix, next_tokens))
+            },
+        )
         .map_ok(|r| futures::stream::iter(r.objects.into_iter().map(Ok)))
         .try_flatten()
         .boxed()

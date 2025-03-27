@@ -35,23 +35,21 @@ use std::future::Future;
 /// finish, otherwise it will continue to call `op(state, token)` with the values returned by the
 /// previous call to `op`, until a continuation token of `None` is returned
 ///
-pub fn stream_paginated<F, Fut, S, T>(state: S, op: F) -> impl Stream<Item = Result<T>>
+pub fn stream_paginated<F, Fut, S, T, A>(state: S, op: F) -> impl Stream<Item = Result<T>>
 where
-    F: Fn(S, Option<String>) -> Fut + Copy,
-    Fut: Future<Output = Result<(T, S, Option<String>)>>,
+    F: Fn(S, Option<A>) -> Fut + Copy,
+    Fut: Future<Output = Result<(T, S, Option<A>)>>,
 {
-    enum PaginationState<T> {
+    enum PaginationState<T, A> {
         Start(T),
-        HasMore(T, String),
+        HasMore(T, A),
         Done,
     }
 
     futures::stream::unfold(PaginationState::Start(state), move |state| async move {
         let (s, page_token) = match state {
             PaginationState::Start(s) => (s, None),
-            PaginationState::HasMore(s, page_token) if !page_token.is_empty() => {
-                (s, Some(page_token))
-            }
+            PaginationState::HasMore(s, page_token) => (s, Some(page_token)),
             _ => {
                 return None;
             }

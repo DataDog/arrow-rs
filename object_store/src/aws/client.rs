@@ -29,7 +29,7 @@ use crate::client::list::ListClient;
 use crate::client::retry::RetryExt;
 use crate::client::s3::{
     CompleteMultipartUpload, CompleteMultipartUploadResult, InitiateMultipartUploadResult,
-    ListResponse, Tagging,
+    ListResponse, ListVersionsResponse, Tagging,
 };
 use crate::client::GetOptionsExt;
 use crate::multipart::PartId;
@@ -768,8 +768,9 @@ impl ListClient for S3Client {
         prefix: Option<&str>,
         delimiter: bool,
         token: Option<&str>,
+        version_token: Option<&str>,
         _offset: Option<&str>, // Offset is handled differently for versions
-    ) -> Result<(ListResult, Option<String>)> {
+    ) -> Result<(ListResult, Option<String>, Option<String>)> {
         let credential = self.config.get_session_credential().await?;
         let url = self.config.bucket_endpoint.clone();
 
@@ -780,6 +781,10 @@ impl ListClient for S3Client {
 
         if let Some(token) = token {
             query.push(("key-marker", token))
+        }
+
+        if let Some(version_token) = version_token {
+            query.push(("version-id-marker", version_token))
         }
 
         if delimiter {
@@ -802,11 +807,12 @@ impl ListClient for S3Client {
             .await
             .context(ListResponseBodySnafu)?;
 
-        let mut response: ListResponse =
+        let mut response: ListVersionsResponse =
             quick_xml::de::from_reader(response.reader()).context(InvalidListResponseSnafu)?;
-        let token = response.next_continuation_token.take();
+        let token = response.next_key_marker.take();
+        let version_token = response.next_version_id_marker.take();
 
-        Ok((response.try_into()?, token))
+        Ok((response.try_into()?, token, version_token))
     }
 }
 
