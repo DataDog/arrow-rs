@@ -722,6 +722,9 @@ pub trait ObjectStore: std::fmt::Display + Send + Sync + Debug + 'static {
     /// Note: the order of returned [`ObjectMeta`] is not guaranteed
     fn list(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>>;
 
+    /// List all the versions of the objects with the given prefix.
+    fn list_versions(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>>;
+
     /// List all the objects with the given prefix and a location greater than `offset`
     ///
     /// Some stores, such as S3 and GCS, may be able to push `offset` down to reduce
@@ -856,6 +859,10 @@ macro_rules! as_ref_impl {
 
             fn list(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
                 self.as_ref().list(prefix)
+            }
+
+            fn list_versions(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
+                self.as_ref().list_versions(prefix)
             }
 
             fn list_with_offset(

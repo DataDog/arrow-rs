@@ -156,6 +156,12 @@ impl ObjectStore for HttpStore {
         .boxed()
     }
 
+    fn list_versions(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
+        // HTTP/WebDAV storage doesn't support versioning
+        // Return the same results as list
+        self.list(prefix)
+    }
+
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
         let status = self.client.list(prefix, "1").await?;
         let prefix_len = prefix.map(|p| p.as_ref().len()).unwrap_or(0);

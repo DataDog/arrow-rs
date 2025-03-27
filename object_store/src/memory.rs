@@ -344,6 +344,11 @@ impl ObjectStore for InMemory {
         futures::stream::iter(values).boxed()
     }
 
+    fn list_versions(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
+        // InMemory doesn't support versioning, so return the same results as list
+        self.list(prefix)
+    }
+
     /// The memory implementation returns all results, as opposed to the cloud
     /// versions which limit their results to 1k or more because of API
     /// limitations.

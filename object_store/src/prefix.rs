@@ -148,6 +148,12 @@ impl<T: ObjectStore> ObjectStore for PrefixStore<T> {
         s.map_ok(|meta| self.strip_meta(meta)).boxed()
     }
 
+    fn list_versions(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
+        let prefix = self.full_path(prefix.unwrap_or(&Path::default()));
+        let s = self.inner.list_versions(Some(&prefix));
+        s.map_ok(|meta| self.strip_meta(meta)).boxed()
+    }
+
     fn list_with_offset(
         &self,
         prefix: Option<&Path>,

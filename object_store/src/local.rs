@@ -637,6 +637,11 @@ impl ObjectStore for LocalFileSystem {
         .boxed()
     }
 
+    fn list_versions(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
+        // Local filesystem doesn't support versioning, so return the same results as list
+        self.list(prefix)
+    }
+
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
         let config = Arc::clone(&self.config);
 

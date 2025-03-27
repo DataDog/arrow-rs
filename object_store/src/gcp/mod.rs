@@ -189,6 +189,12 @@ impl ObjectStore for GoogleCloudStorage {
         self.client.list(prefix)
     }
 
+    fn list_versions(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
+        // GCS has versioning, but the implementation is different from S3
+        // For now, return the same results as list
+        self.list(prefix)
+    }
+
     fn list_with_offset(
         &self,
         prefix: Option<&Path>,

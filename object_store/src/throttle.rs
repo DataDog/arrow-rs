@@ -308,6 +308,17 @@ impl<T: ObjectStore> ObjectStore for ThrottledStore<T> {
         .boxed()
     }
 
+    fn list_versions(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
+        let stream = self.inner.list_versions(prefix);
+        futures::stream::once(async move {
+            let wait_list_per_entry = self.config().wait_list_per_entry;
+            sleep(self.config().wait_list_per_call).await;
+            throttle_stream(stream, move |_| wait_list_per_entry)
+        })
+        .flatten()
+        .boxed()
+    }
+
     fn list_with_offset(
         &self,
         prefix: Option<&Path>,

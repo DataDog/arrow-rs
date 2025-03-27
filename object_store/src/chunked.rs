@@ -154,6 +154,10 @@ impl ObjectStore for ChunkedStore {
         self.inner.list(prefix)
     }
 
+    fn list_versions(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
+        self.inner.list_versions(prefix)
+    }
+
     fn list_with_offset(
         &self,
         prefix: Option<&Path>,

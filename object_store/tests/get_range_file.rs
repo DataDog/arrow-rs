@@ -67,6 +67,10 @@ impl ObjectStore for MyStore {
         todo!()
     }
 
+    fn list_versions(&self, _: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
+        todo!()
+    }
+
     async fn list_with_delimiter(&self, _: Option<&Path>) -> Result<ListResult> {
         todo!()
     }

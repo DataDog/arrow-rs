@@ -762,6 +762,52 @@ impl ListClient for S3Client {
 
         Ok((response.try_into()?, token))
     }
+
+    async fn list_versions_request(
+        &self,
+        prefix: Option<&str>,
+        delimiter: bool,
+        token: Option<&str>,
+        _offset: Option<&str>, // Offset is handled differently for versions
+    ) -> Result<(ListResult, Option<String>)> {
+        let credential = self.config.get_session_credential().await?;
+        let url = self.config.bucket_endpoint.clone();
+
+        let mut query = Vec::with_capacity(4);
+
+        // Use versions parameter instead of list-type
+        query.push(("versions", ""));
+
+        if let Some(token) = token {
+            query.push(("key-marker", token))
+        }
+
+        if delimiter {
+            query.push(("delimiter", DELIMITER))
+        }
+
+        if let Some(prefix) = prefix {
+            query.push(("prefix", prefix))
+        }
+
+        let response = self
+            .client
+            .request(Method::GET, &url)
+            .query(&query)
+            .with_aws_sigv4(credential.authorizer(), None)
+            .send_retry(&self.config.retry_config)
+            .await
+            .context(ListRequestSnafu)?
+            .bytes()
+            .await
+            .context(ListResponseBodySnafu)?;
+
+        let mut response: ListResponse =
+            quick_xml::de::from_reader(response.reader()).context(InvalidListResponseSnafu)?;
+        let token = response.next_continuation_token.take();
+
+        Ok((response.try_into()?, token))
+    }
 }
 
 fn encode_path(path: &Path) -> PercentEncode<'_> {

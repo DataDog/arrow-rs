@@ -259,6 +259,10 @@ impl ObjectStore for AmazonS3 {
         self.client.list(prefix)
     }
 
+    fn list_versions(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
+        self.client.list_versions(prefix)
+    }
+
     fn list_with_offset(
         &self,
         prefix: Option<&Path>,

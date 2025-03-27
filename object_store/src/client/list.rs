@@ -34,6 +34,19 @@ pub trait ListClient: Send + Sync + 'static {
         token: Option<&str>,
         offset: Option<&str>,
     ) -> Result<(ListResult, Option<String>)>;
+
+    /// A list request that includes object versions, for stores that support versioning
+    async fn list_versions_request(
+        &self,
+        prefix: Option<&str>,
+        delimiter: bool,
+        token: Option<&str>,
+        offset: Option<&str>,
+    ) -> Result<(ListResult, Option<String>)> {
+        // Default implementation just forwards to list_request
+        // This method should be overridden by stores that support versioning
+        self.list_request(prefix, delimiter, token, offset).await
+    }
 }
 
 /// Extension trait for [`ListClient`] that adds common listing functionality
@@ -47,6 +60,8 @@ pub trait ListClientExt {
     ) -> BoxStream<'_, Result<ListResult>>;
 
     fn list(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>>;
+
+    fn list_versions(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>>;
 
     #[allow(unused)]
     fn list_with_offset(
@@ -93,6 +108,22 @@ impl<T: ListClient> ListClientExt for T {
             .map_ok(|r| futures::stream::iter(r.objects.into_iter().map(Ok)))
             .try_flatten()
             .boxed()
+    }
+
+    fn list_versions(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
+        let prefix = prefix
+            .filter(|x| !x.as_ref().is_empty())
+            .map(|p| format!("{}{}", p.as_ref(), crate::path::DELIMITER));
+
+        stream_paginated(prefix, move |prefix, token| async move {
+            let (r, next_token) = self
+                .list_versions_request(prefix.as_deref(), false, token.as_deref(), None)
+                .await?;
+            Ok((r, prefix, next_token))
+        })
+        .map_ok(|r| futures::stream::iter(r.objects.into_iter().map(Ok)))
+        .try_flatten()
+        .boxed()
     }
 
     fn list_with_offset(
