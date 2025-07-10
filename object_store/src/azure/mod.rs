@@ -126,9 +126,7 @@ impl ObjectStore for MicrosoftAzure {
     }
 
     fn list_versions(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
-        // Azure Blob Storage doesn't support versions in the same way as S3
-        // Return the same results as list
-        self.list(prefix)
+        self.client.list_versions(prefix)
     }
 
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {

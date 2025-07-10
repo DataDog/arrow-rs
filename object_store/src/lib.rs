@@ -578,6 +578,7 @@ pub type MultipartId = String;
 
 /// Universal API to multiple object store services.
 #[async_trait]
+#[allow(missing_docs)]
 pub trait ObjectStore: std::fmt::Display + Send + Sync + Debug + 'static {
     /// Save the provided bytes to the specified location
     ///

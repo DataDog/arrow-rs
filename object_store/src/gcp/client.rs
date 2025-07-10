@@ -747,4 +747,13 @@ impl ListClient for GoogleCloudStorageClient {
         let token = response.next_continuation_token.take();
         Ok((response.try_into()?, token))
     }
+
+    // async fn list_versions_request(&self, prefix: Option<&str>, delimiter: bool, page_token: Option<&str>, _: Option<&str>, offset: Option<&str>) -> Result<(ListResult, Option<String>, Option<String>)> {
+    //     todo!();
+    //
+    //     query.push(("versions", "True"));
+    //
+    //     let token = response.next_continuation_token.take();
+    //     Ok((response.try_into()?, token, None))
+    // }
 }

@@ -148,6 +148,7 @@ impl Attributes {
         self.0.iter()
     }
 
+    /// Returns an [`Iterator`] skipping unset attributes
     pub fn iter_set_values(&self) -> impl Iterator<Item = (&Attribute, &AttributeValue)> {
         self.0
             .iter()

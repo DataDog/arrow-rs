@@ -623,23 +623,89 @@ impl ListClient for AzureClient {
     ) -> Result<(ListResult, Option<String>)> {
         assert!(offset.is_none()); // Not yet supported
 
-        let credential = self.get_credential().await?;
+        let includes = &[];
+        let request = ListRequestInternal {
+            config: &self.config,
+            client: &self.client,
+            prefix,
+            delimiter,
+            token,
+            includes,
+        };
+
+        let response = request.send().await?;
+        let mut response: ListResultInternal =
+            quick_xml::de::from_reader(response.reader()).context(InvalidListResponseSnafu)?;
+        let token = response.next_marker.take();
+
+        Ok((to_list_result(response, prefix)?, token))
+    }
+
+    async fn list_versions_request(
+        &self,
+        prefix: Option<&str>,
+        delimiter: bool,
+        token: Option<&str>,
+        _: Option<&str>,
+        offset: Option<&str>,
+    ) -> Result<(ListResult, Option<String>, Option<String>)> {
+        assert!(offset.is_none()); // Not yet supported
+
+        let includes = &["versions"];
+        let request = ListRequestInternal {
+            config: &self.config,
+            client: &self.client,
+            prefix,
+            delimiter,
+            token,
+            includes,
+        };
+
+        let response = request.send().await?;
+        let mut response: ListResultInternal =
+            quick_xml::de::from_reader(response.reader()).context(InvalidListResponseSnafu)?;
+        let token = response.next_marker.take();
+
+        // Azure defines only one combined continuation token
+        Ok((to_list_result(response, prefix)?, token, None))
+    }
+}
+
+/// Template for a list request
+#[derive(Debug, Clone)]
+struct ListRequestInternal<'a> {
+    pub config: &'a AzureConfig,
+    pub client: &'a ReqwestClient,
+
+    pub prefix: Option<&'a str>,
+    pub delimiter: bool,
+    pub token: Option<&'a str>,
+    pub includes: &'a [&'a str],
+}
+
+impl<'a> ListRequestInternal<'a> {
+    async fn send(self) -> Result<Bytes> {
+        let credential = self.config.get_credential().await?;
         let url = self.config.path_url(&Path::default());
 
-        let mut query = Vec::with_capacity(5);
+        let mut query = Vec::with_capacity(6);
         query.push(("restype", "container"));
         query.push(("comp", "list"));
 
-        if let Some(prefix) = prefix {
+        if let Some(prefix) = self.prefix {
             query.push(("prefix", prefix))
         }
 
-        if delimiter {
+        if self.delimiter {
             query.push(("delimiter", DELIMITER))
         }
 
-        if let Some(token) = token {
+        if let Some(token) = self.token {
             query.push(("marker", token))
+        }
+
+        for include in self.includes {
+            query.push(("include", include));
         }
 
         let response = self
@@ -654,11 +720,7 @@ impl ListClient for AzureClient {
             .await
             .context(ListResponseBodySnafu)?;
 
-        let mut response: ListResultInternal =
-            quick_xml::de::from_reader(response.reader()).context(InvalidListResponseSnafu)?;
-        let token = response.next_marker.take();
-
-        Ok((to_list_result(response, prefix)?, token))
+        Ok(response)
     }
 }
 
@@ -740,7 +802,7 @@ impl TryFrom<Blob> for ObjectMeta {
             last_modified: value.properties.last_modified,
             size: value.properties.content_length as usize,
             e_tag: value.properties.e_tag,
-            version: None, // For consistency with S3 and GCP which don't include this
+            version: value.version_id,
         })
     }
 }

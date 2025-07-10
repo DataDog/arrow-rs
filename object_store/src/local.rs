@@ -38,9 +38,8 @@ use crate::{
     maybe_spawn_blocking,
     path::{absolute_path_to_url, Path},
     util::InvalidGetRange,
-    Attribute, AttributeValue, Attributes, GetOptions, GetResult, GetResultPayload, ListResult,
-    MultipartUpload, ObjectMeta, ObjectStore, PutMode, PutMultipartOpts, PutOptions, PutPayload,
-    PutResult, Result, UploadPart,
+    Attributes, GetOptions, GetResult, GetResultPayload, ListResult, MultipartUpload, ObjectMeta,
+    ObjectStore, PutMode, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result, UploadPart,
 };
 
 /// A specialized `Error` for filesystem object store-related errors
