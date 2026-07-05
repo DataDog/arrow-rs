@@ -279,24 +279,18 @@ impl ArrayData {
         buffers: Vec<Buffer>,
         child_data: Vec<ArrayData>,
     ) -> Self {
-        let mut skip_validation = UnsafeFlag::new();
-        // SAFETY: caller responsible for ensuring data is valid
-        unsafe { skip_validation.set(true) };
-
-        ArrayDataBuilder {
+        let builder = Self::inner_new_builder(
             data_type,
             len,
             null_count,
             null_bit_buffer,
-            nulls: None,
             offset,
             buffers,
             child_data,
-            align_buffers: false,
-            skip_validation,
-        }
-        .build()
-        .unwrap()
+        );
+
+        // SAFETY: caller responsible for ensuring data is valid
+        unsafe { builder.build_unchecked() }
     }
 
     /// Create a new ArrayData, validating that the provided buffers form a valid
@@ -322,7 +316,7 @@ impl ArrayData {
     ) -> Result<Self, ArrowError> {
         // we must check the length of `null_bit_buffer` first
         // because we use this buffer to calculate `null_count`
-        // in `Self::new_unchecked`.
+        // in `ArrayDataBuilder::build`.
         if let Some(null_bit_buffer) = null_bit_buffer.as_ref() {
             let needed_len = bit_util::ceil(len + offset, 8);
             if null_bit_buffer.len() < needed_len {
@@ -333,25 +327,47 @@ impl ArrayData {
                 )));
             }
         }
-        // Safety justification: `validate_full` is called below
-        let new_self = unsafe {
-            Self::new_unchecked(
-                data_type,
-                len,
-                None,
-                null_bit_buffer,
-                offset,
-                buffers,
-                child_data,
-            )
-        };
+
+        let builder = Self::inner_new_builder(
+            data_type,
+            len,
+            None,
+            null_bit_buffer,
+            offset,
+            buffers,
+            child_data,
+        );
+
+        assert!(!builder.skip_validation.get());
 
         // As the data is not trusted, do a full validation of its contents
         // We don't need to validate children as we can assume that the
         // [`ArrayData`] in `child_data` have already been validated through
         // a call to `ArrayData::try_new` or created using unsafe
-        new_self.validate_data()?;
-        Ok(new_self)
+        builder.build()
+    }
+
+    fn inner_new_builder(
+        data_type: DataType,
+        len: usize,
+        null_count: Option<usize>,
+        null_bit_buffer: Option<Buffer>,
+        offset: usize,
+        buffers: Vec<Buffer>,
+        child_data: Vec<ArrayData>,
+    ) -> ArrayDataBuilder {
+        ArrayDataBuilder {
+            data_type,
+            len,
+            null_count,
+            null_bit_buffer,
+            nulls: None,
+            offset,
+            buffers,
+            child_data,
+            align_buffers: false,
+            skip_validation: UnsafeFlag::new(),
+        }
     }
 
     /// Return the constituent parts of this ArrayData
@@ -2559,5 +2575,28 @@ mod tests {
         for i in 0..array.len() {
             assert!(array.is_null(i));
         }
+    }
+
+    // Even when `force_validate` feature is on
+    #[test]
+    fn test_dont_panic_on_bad_input_when_using_try_new() {
+        let empty_bytes = Buffer::default();
+
+        let array_data = ArrayData::try_new(
+            DataType::Utf8,
+            1, // len
+            None,
+            0,
+            // the offsets says that we have 2 bytes but the buffer is empty
+            vec![Buffer::from_vec(vec![0i32, 2i32]), empty_bytes],
+            vec![],
+        );
+
+        let res = array_data.expect_err("should get error");
+
+        assert_eq!(
+            res.to_string(),
+            format!("Invalid argument error: Last offset 2 of Utf8 is larger than values length 0",)
+        );
     }
 }
